@@ -1,11 +1,13 @@
 [workspace]
-members = ["src/depot", "src/waybill"]
+members = ["courier", "courier_core/*"]
 resolver = "3"
 
 [workspace.package]
-name = "courier"
 description = "A network server framework"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.91"
 license = "Apache-2.0"
+
+[workspace.dependencies]
+tokio = "1.52.1"
