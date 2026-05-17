@@ -1,12 +1,12 @@
 [package]
-name = "network"
-description = "Network capability"
+name = "protocol"
+description = "Protocol definition & implementation"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
-tokio = { workspace = true, features = ["net", "io-util"] }
-bytes = "1.11.1"
 async-trait.workspace = true
+
+network = { path = "../network" }

@@ -9,3 +9,4 @@ license.workspace = true
 [dependencies]
 depot = { path = "../courier_core/depot" }
 network = { path = "../courier_core/network" }
+protocol = { path = "../courier_core/protocol" }

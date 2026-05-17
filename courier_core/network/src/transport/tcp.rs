@@ -14,21 +14,8 @@ use crate::{
 pub struct TcpTransport(tokio::net::TcpListener);
 
 impl Transport for TcpTransport {
-  type Data = TcpReadHalf;
-
   fn bind<A: ToSocketAddrs + Send>(addr: A) -> Result<Self> {
     Ok(Self(tokio::net::TcpListener::from_std(TcpListener::bind(addr)?)?))
-  }
-}
-
-#[async_trait]
-impl StreamTransport for TcpTransport {
-  type Stream = TcpStream;
-
-  async fn accept(&self) -> Result<Self::Stream> {
-    let (stream, _) = self.0.accept().await?;
-
-    Ok(TcpStream::new(stream))
   }
 
   fn set_ttl(&self, ttl: u32) -> Result<()> {
@@ -41,6 +28,20 @@ impl StreamTransport for TcpTransport {
 
   fn local_addr(&self) -> Result<SocketAddr> {
     self.0.local_addr()
+  }
+}
+
+#[async_trait]
+impl StreamTransport for TcpTransport {
+  type ReadHalf = TcpReadHalf;
+  type WriteHalf = TcpWriteHalf;
+
+  type Stream = TcpStream;
+
+  async fn accept(&self) -> Result<Self::Stream> {
+    let (stream, _) = self.0.accept().await?;
+
+    Ok(TcpStream::new(stream))
   }
 }
 
