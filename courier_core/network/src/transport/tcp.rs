@@ -3,7 +3,6 @@ use std::{
   net::{SocketAddr, TcpListener, ToSocketAddrs},
 };
 
-use async_trait::async_trait;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use crate::{
@@ -31,7 +30,6 @@ impl Transport for TcpTransport {
   }
 }
 
-#[async_trait]
 impl StreamTransport for TcpTransport {
   type ReadHalf = TcpReadHalf;
   type WriteHalf = TcpWriteHalf;
@@ -53,7 +51,6 @@ impl TcpStream {
   }
 }
 
-#[async_trait]
 impl Stream for TcpStream {
   async fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
     self.0.read(buf).await
@@ -93,7 +90,6 @@ impl SplitStream for TcpStream {
 
 pub struct TcpReadHalf(tokio::net::tcp::OwnedReadHalf);
 
-#[async_trait]
 impl ReadHalf for TcpReadHalf {
   async fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
     self.0.read(buf).await
@@ -106,7 +102,6 @@ impl ReadHalf for TcpReadHalf {
 
 pub struct TcpWriteHalf(tokio::net::tcp::OwnedWriteHalf);
 
-#[async_trait]
 impl WriteHalf for TcpWriteHalf {
   async fn write(&mut self, buf: &[u8]) -> Result<usize> {
     self.0.write(buf).await

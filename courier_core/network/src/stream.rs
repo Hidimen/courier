@@ -3,89 +3,92 @@ use std::{
   net::SocketAddr,
 };
 
-use async_trait::async_trait;
-
-#[async_trait]
 pub trait Stream: Send + Sync + 'static {
   /// Read from an exist stream.
   ///
   /// # Returns
   /// `usize` means exact bytes read. 0 means the peer is closed.
-  async fn read(&mut self, buf: &mut [u8]) -> Result<usize>;
+  fn read(&mut self, buf: &mut [u8]) -> impl Future<Output = Result<usize>> + Send;
 
-  async fn write(&mut self, buf: &[u8]) -> Result<usize>;
+  fn write(&mut self, buf: &[u8]) -> impl Future<Output = Result<usize>> + Send;
 
-  async fn flush(&mut self) -> Result<()>;
+  fn flush(&mut self) -> impl Future<Output = Result<()>> + Send;
 
-  async fn peek(&mut self, buf: &mut [u8]) -> Result<usize>;
+  fn peek(&mut self, buf: &mut [u8]) -> impl Future<Output = Result<usize>> + Send;
 
   fn peer_addr(&self) -> Result<SocketAddr>;
 
   fn local_addr(&self) -> Result<SocketAddr>;
 
-  async fn read_exact(&mut self, buf: &mut [u8]) -> Result<()> {
-    let mut read_len = 0;
-    while read_len < buf.len() {
-      let n = self.read(&mut buf[read_len..]).await?;
-      if n == 0 {
-        return Err(Error::new(ErrorKind::UnexpectedEof, "Unexpected EOF"));
+  fn read_exact(&mut self, buf: &mut [u8]) -> impl Future<Output = Result<()>> + Send {
+    async {
+      let mut read_len = 0;
+      while read_len < buf.len() {
+        let n = self.read(&mut buf[read_len..]).await?;
+        if n == 0 {
+          return Err(Error::new(ErrorKind::UnexpectedEof, "Unexpected EOF"));
+        }
+
+        read_len += n;
       }
 
-      read_len += n;
+      Ok(())
     }
-
-    Ok(())
   }
 
-  async fn write_all(&mut self, mut buf: &[u8]) -> Result<()> {
-    while !buf.is_empty() {
-      let n = self.write(buf).await?;
-      buf = &buf[n..];
-    }
+  fn write_all(&mut self, mut buf: &[u8]) -> impl Future<Output = Result<()>> + Send {
+    async move {
+      while !buf.is_empty() {
+        let n = self.write(buf).await?;
+        buf = &buf[n..];
+      }
 
-    Ok(())
+      Ok(())
+    }
   }
 }
 
-#[async_trait]
 pub trait ReadHalf: Send + Sync + Sized + 'static {
-  async fn read(&mut self, buf: &mut [u8]) -> Result<usize>;
+  fn read(&mut self, buf: &mut [u8]) -> impl Future<Output = Result<usize>> + Send;
 
   fn local_addr(&self) -> Result<SocketAddr>;
 
-  async fn read_exact(&mut self, buf: &mut [u8]) -> Result<()> {
-    let mut read_len = 0;
-    while read_len < buf.len() {
-      let n = self.read(&mut buf[read_len..]).await?;
-      if n == 0 {
-        return Err(Error::new(ErrorKind::UnexpectedEof, "Unexpected EOF"));
+  fn read_exact(&mut self, buf: &mut [u8]) -> impl Future<Output = Result<()>> + Send {
+    async {
+      let mut read_len = 0;
+      while read_len < buf.len() {
+        let n = self.read(&mut buf[read_len..]).await?;
+        if n == 0 {
+          return Err(Error::new(ErrorKind::UnexpectedEof, "Unexpected EOF"));
+        }
+
+        read_len += n;
       }
 
-      read_len += n;
+      Ok(())
     }
-
-    Ok(())
   }
 }
 
-#[async_trait]
 pub trait WriteHalf: Send + Sync + Sized + 'static {
-  async fn write(&mut self, buf: &[u8]) -> Result<usize>;
+  fn write(&mut self, buf: &[u8]) -> impl Future<Output = Result<usize>> + Send;
 
   fn local_addr(&self) -> Result<SocketAddr>;
 
   fn peer_addr(&self) -> Result<SocketAddr>;
 
-  async fn write_all(&mut self, mut buf: &[u8]) -> Result<()> {
-    while !buf.is_empty() {
-      let n = self.write(buf).await?;
-      buf = &buf[n..];
-    }
+  fn write_all(&mut self, mut buf: &[u8]) -> impl Future<Output = Result<()>> + Send {
+    async move {
+      while !buf.is_empty() {
+        let n = self.write(buf).await?;
+        buf = &buf[n..];
+      }
 
-    Ok(())
+      Ok(())
+    }
   }
 
-  async fn flush(&mut self) -> Result<()>;
+  fn flush(&mut self) -> impl Future<Output = Result<()>> + Send;
 }
 
 pub trait SplitStream: Stream {

@@ -3,8 +3,6 @@ use std::{
   net::{SocketAddr, ToSocketAddrs, UdpSocket},
 };
 
-use async_trait::async_trait;
-
 use crate::transport::{DatagramTransport, Transport};
 
 pub struct UdpTransport(tokio::net::UdpSocket);
@@ -27,7 +25,6 @@ impl Transport for UdpTransport {
   }
 }
 
-#[async_trait]
 impl DatagramTransport for UdpTransport {
   async fn recv(&self, buf: &mut [u8]) -> Result<usize> {
     self.0.recv(buf).await

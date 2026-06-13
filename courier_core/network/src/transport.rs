@@ -6,8 +6,6 @@ use std::{
   net::{SocketAddr, ToSocketAddrs},
 };
 
-use async_trait::async_trait;
-
 use crate::stream::{ReadHalf, SplitStream, WriteHalf};
 
 pub trait Transport: Send + Sync + Sized + 'static {
@@ -20,20 +18,18 @@ pub trait Transport: Send + Sync + Sized + 'static {
   fn local_addr(&self) -> Result<SocketAddr>;
 }
 
-#[async_trait]
 pub trait StreamTransport: Transport {
   type ReadHalf: ReadHalf + 'static;
   type WriteHalf: WriteHalf + 'static;
   type Stream: SplitStream<ReadHalf = Self::ReadHalf, WriteHalf = Self::WriteHalf> + 'static;
 
-  async fn accept(&self) -> Result<Self::Stream>;
+  fn accept(&self) -> impl Future<Output = Result<Self::Stream>> + Send;
 }
 
-#[async_trait]
 pub trait DatagramTransport: Transport {
-  async fn recv(&self, buf: &mut [u8]) -> Result<usize>;
+  fn recv(&self, buf: &mut [u8]) -> impl Future<Output = Result<usize>> + Send;
 
-  async fn recv_from(&self, buf: &mut [u8]) -> Result<(usize, SocketAddr)>;
+  fn recv_from(&self, buf: &mut [u8]) -> impl Future<Output = Result<(usize, SocketAddr)>> + Send;
 
-  async fn send_to(&self, buf: &[u8], addr: SocketAddr) -> Result<usize>;
+  fn send_to(&self, buf: &[u8], addr: SocketAddr) -> impl Future<Output = Result<usize>> + Send;
 }
