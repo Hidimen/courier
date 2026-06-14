@@ -1,6 +1,7 @@
 mod builder;
 pub mod flow;
 pub mod flows;
+mod format;
 mod level;
 mod logger;
 pub mod message;

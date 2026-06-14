@@ -12,11 +12,19 @@ pub struct Message {
 
 impl Message {
   pub fn new(content: String, level: Level) -> Self {
-    Self { timestamp: Utc::now().timestamp(), level, content: Content::Dynamic(content) }
+    Self {
+      timestamp: Utc::now().timestamp(),
+      level,
+      content: Content::Dynamic(content),
+    }
   }
 
   pub fn new_from_static(content: &'static str, level: Level) -> Self {
-    Self { timestamp: Utc::now().timestamp(), level, content: Content::Static(content) }
+    Self {
+      timestamp: Utc::now().timestamp(),
+      level,
+      content: Content::Static(content),
+    }
   }
 }
 

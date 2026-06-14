@@ -1,4 +1,5 @@
 use std::{
+  io::Write,
   sync::{Arc, OnceLock},
   thread::JoinHandle,
   time::Duration,
@@ -6,7 +7,7 @@ use std::{
 
 use crossbeam::channel::{RecvTimeoutError, Sender, bounded};
 
-use crate::{Level, flow::Flow, message::Message};
+use crate::{Level, builder::FormatFunction, flow::Flow, message::Message};
 
 static SINGLETON: OnceLock<Arc<Logger>> = OnceLock::new();
 
@@ -17,7 +18,10 @@ pub struct Logger {
 }
 
 impl Logger {
-  pub fn new<F: Flow>(capacity: usize, flows: F) -> Arc<Self> {
+  pub fn new<F>(capacity: usize, flows: F, format: FormatFunction) -> Arc<Self>
+  where
+    F: Flow + Write,
+  {
     let (sender, receiver) = bounded::<Message>(capacity);
 
     let handle = std::thread::Builder::new()
@@ -25,10 +29,11 @@ impl Logger {
       .stack_size(3 * 1024 * 1024)
       .spawn(move || {
         let mut flows = flows;
+        let format = format;
         loop {
           match receiver.recv_timeout(Duration::from_millis(500)) {
             Ok(data) => {
-              let _ = flows.println(data.content.get());
+              (format)(&mut flows, data);
             },
             Err(RecvTimeoutError::Disconnected) => break,
             Err(RecvTimeoutError::Timeout) => continue,
@@ -85,13 +90,13 @@ impl Logger {
   }
 }
 
-#[cfg(test)]
-mod tests {
-  use crate::Logger;
+// #[cfg(test)]
+// mod tests {
+//   use crate::Logger;
 
-  // #[test]
-  // fn overall() {
-  //   let logger = Logger::new(1000);
-  //   logger.info("test");
-  // }
-}
+//   // #[test]
+//   // fn overall() {
+//   //   let logger = Logger::new(1000);
+//   //   logger.info("test");
+//   // }
+// }

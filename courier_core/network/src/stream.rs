@@ -8,19 +8,26 @@ pub trait Stream: Send + Sync + 'static {
   ///
   /// # Returns
   /// `usize` means exact bytes read. 0 means the peer is closed.
-  fn read(&mut self, buf: &mut [u8]) -> impl Future<Output = Result<usize>> + Send;
+  fn read(
+    &mut self, buf: &mut [u8],
+  ) -> impl Future<Output = Result<usize>> + Send;
 
-  fn write(&mut self, buf: &[u8]) -> impl Future<Output = Result<usize>> + Send;
+  fn write(&mut self, buf: &[u8])
+  -> impl Future<Output = Result<usize>> + Send;
 
   fn flush(&mut self) -> impl Future<Output = Result<()>> + Send;
 
-  fn peek(&mut self, buf: &mut [u8]) -> impl Future<Output = Result<usize>> + Send;
+  fn peek(
+    &mut self, buf: &mut [u8],
+  ) -> impl Future<Output = Result<usize>> + Send;
 
   fn peer_addr(&self) -> Result<SocketAddr>;
 
   fn local_addr(&self) -> Result<SocketAddr>;
 
-  fn read_exact(&mut self, buf: &mut [u8]) -> impl Future<Output = Result<()>> + Send {
+  fn read_exact(
+    &mut self, buf: &mut [u8],
+  ) -> impl Future<Output = Result<()>> + Send {
     async {
       let mut read_len = 0;
       while read_len < buf.len() {
@@ -36,7 +43,9 @@ pub trait Stream: Send + Sync + 'static {
     }
   }
 
-  fn write_all(&mut self, mut buf: &[u8]) -> impl Future<Output = Result<()>> + Send {
+  fn write_all(
+    &mut self, mut buf: &[u8],
+  ) -> impl Future<Output = Result<()>> + Send {
     async move {
       while !buf.is_empty() {
         let n = self.write(buf).await?;
@@ -49,11 +58,15 @@ pub trait Stream: Send + Sync + 'static {
 }
 
 pub trait ReadHalf: Send + Sync + Sized + 'static {
-  fn read(&mut self, buf: &mut [u8]) -> impl Future<Output = Result<usize>> + Send;
+  fn read(
+    &mut self, buf: &mut [u8],
+  ) -> impl Future<Output = Result<usize>> + Send;
 
   fn local_addr(&self) -> Result<SocketAddr>;
 
-  fn read_exact(&mut self, buf: &mut [u8]) -> impl Future<Output = Result<()>> + Send {
+  fn read_exact(
+    &mut self, buf: &mut [u8],
+  ) -> impl Future<Output = Result<()>> + Send {
     async {
       let mut read_len = 0;
       while read_len < buf.len() {
@@ -71,13 +84,16 @@ pub trait ReadHalf: Send + Sync + Sized + 'static {
 }
 
 pub trait WriteHalf: Send + Sync + Sized + 'static {
-  fn write(&mut self, buf: &[u8]) -> impl Future<Output = Result<usize>> + Send;
+  fn write(&mut self, buf: &[u8])
+  -> impl Future<Output = Result<usize>> + Send;
 
   fn local_addr(&self) -> Result<SocketAddr>;
 
   fn peer_addr(&self) -> Result<SocketAddr>;
 
-  fn write_all(&mut self, mut buf: &[u8]) -> impl Future<Output = Result<()>> + Send {
+  fn write_all(
+    &mut self, mut buf: &[u8],
+  ) -> impl Future<Output = Result<()>> + Send {
     async move {
       while !buf.is_empty() {
         let n = self.write(buf).await?;

@@ -36,16 +36,18 @@ where
     loop {
       let (read, mut write) = self.transport.accept().await?.split();
       let protocol_cloned = self.protocol.clone();
-      let data: Result<network::Frame, DepotError<P::Error>> = match tokio::spawn(async move {
-        let c = protocol_cloned.decode(read).await.map_err(ProtocolErrorWrapper)?;
-        let d = protocol_cloned.encode(c).await;
-        Ok(d)
-      })
-      .await
-      {
-        Ok(d) => d,
-        Err(e) => return Err(DepotError::TaskTerminated(e)),
-      };
+      let data: Result<network::Frame, DepotError<P::Error>> =
+        match tokio::spawn(async move {
+          let c =
+            protocol_cloned.decode(read).await.map_err(ProtocolErrorWrapper)?;
+          let d = protocol_cloned.encode(c).await;
+          Ok(d)
+        })
+        .await
+        {
+          Ok(d) => d,
+          Err(e) => return Err(DepotError::TaskTerminated(e)),
+        };
       write.write_all(data?.as_ref()).await?;
       write.flush().await?
     }
@@ -63,16 +65,18 @@ where
       let (_, peer) = self.transport.recv_from(&mut buf).await?;
 
       let protocol_cloned = self.protocol.clone();
-      let data: Result<network::Frame, DepotError<P::Error>> = match tokio::spawn(async move {
-        let c = protocol_cloned.decode(&buf).await.map_err(ProtocolErrorWrapper)?;
-        let d = protocol_cloned.encode(c).await;
-        Ok(d)
-      })
-      .await
-      {
-        Ok(d) => d,
-        Err(e) => return Err(DepotError::TaskTerminated(e)),
-      };
+      let data: Result<network::Frame, DepotError<P::Error>> =
+        match tokio::spawn(async move {
+          let c =
+            protocol_cloned.decode(&buf).await.map_err(ProtocolErrorWrapper)?;
+          let d = protocol_cloned.encode(c).await;
+          Ok(d)
+        })
+        .await
+        {
+          Ok(d) => d,
+          Err(e) => return Err(DepotError::TaskTerminated(e)),
+        };
 
       self.transport.send_to(data?.as_ref(), peer).await?;
     }

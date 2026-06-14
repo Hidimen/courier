@@ -13,21 +13,29 @@ impl ConsoleFlow {
 }
 
 impl Flow for ConsoleFlow {
-  fn println(&mut self, msg: &str) -> Result<(), String> {
-    writeln!(self.stdout, "{}", msg).map_err(|e| e.to_string())?;
+  fn println(&mut self, msg: &str) -> Result<(), std::io::Error> {
+    writeln!(self.stdout, "{}", msg)?;
     Ok(())
   }
 
-  fn print_batch(&mut self, msgs: &[&str]) -> Result<(), String> {
+  fn print_batch(&mut self, msgs: &[&str]) -> Result<(), std::io::Error> {
     let mut handle = self.stdout.lock();
     for msg in msgs {
-      handle.write_all(msg.as_bytes()).map_err(|e| e.to_string())?;
-      handle.write_all(b"\n").map_err(|e| e.to_string())?;
+      handle.write_all(msg.as_bytes())?;
+      handle.write_all(b"\n")?;
     }
 
-    handle.flush().map_err(|e| e.to_string())?;
+    handle.flush()?;
 
     Ok(())
+  }
+
+  fn print_bytes(&mut self, msg: &[u8]) -> Result<usize, std::io::Error> {
+    self.stdout.write(msg)
+  }
+
+  fn flush(&mut self) -> Result<(), std::io::Error> {
+    self.stdout.flush()
   }
 }
 
