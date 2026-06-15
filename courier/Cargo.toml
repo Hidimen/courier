@@ -10,3 +10,4 @@ license.workspace = true
 depot = { path = "../courier_core/depot" }
 network = { path = "../courier_core/network" }
 protocol = { path = "../courier_core/protocol" }
+logger = { path = "../courier_core/logger" }

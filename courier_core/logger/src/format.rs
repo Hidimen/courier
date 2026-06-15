@@ -1,6 +1,14 @@
-use crate::message::Message;
+use crate::Record;
 
-#[allow(unused)]
-pub trait Format {
-  fn format(&self, buf: &mut dyn std::io::Write, msg: Message);
+pub trait Format: Send + 'static {
+  fn format(&self, record: Record) -> Record;
+}
+
+impl<T> Format for T
+where
+  T: Fn(Record) -> Record + Send + 'static,
+{
+  fn format(&self, record: Record) -> Record {
+    (self)(record)
+  }
 }

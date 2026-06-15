@@ -1,28 +1,36 @@
 use std::{
-  io::Write,
-  sync::{Arc, OnceLock},
+  sync::{
+    Arc, Mutex, OnceLock,
+    atomic::{AtomicBool, Ordering},
+  },
   thread::JoinHandle,
   time::Duration,
 };
 
 use crossbeam::channel::{RecvTimeoutError, Sender, bounded};
 
-use crate::{Level, builder::FormatFunction, flow::Flow, message::Message};
+use crate::{Format, HandlingKind, Level, Record, flow::Flow};
 
 static SINGLETON: OnceLock<Arc<Logger>> = OnceLock::new();
 
 #[derive(Debug)]
 pub struct Logger {
-  handle: JoinHandle<()>,
-  sender: Sender<Message>,
+  handle: Mutex<Option<JoinHandle<()>>>,
+  sender: Sender<Record>,
+  signal: Arc<AtomicBool>,
 }
 
 impl Logger {
-  pub fn new<F>(capacity: usize, flows: F, format: FormatFunction) -> Arc<Self>
+  pub fn new<F, Formatter>(
+    capacity: usize, flows: F, format: Formatter,
+  ) -> Arc<Self>
   where
-    F: Flow + Write,
+    F: Flow,
+    Formatter: Format,
   {
-    let (sender, receiver) = bounded::<Message>(capacity);
+    let (sender, receiver) = bounded::<Record>(capacity);
+    let signal = Arc::new(AtomicBool::new(true));
+    let signal_cloned = signal.clone();
 
     let handle = std::thread::Builder::new()
       .name("logger".into())
@@ -30,19 +38,26 @@ impl Logger {
       .spawn(move || {
         let mut flows = flows;
         let format = format;
-        loop {
+        let signal = signal_cloned;
+        while signal.load(Ordering::Acquire) {
           match receiver.recv_timeout(Duration::from_millis(500)) {
-            Ok(data) => {
-              (format)(&mut flows, data);
+            Ok(data) => match flows.println(format.format(data)) {
+              Ok(_) => continue,
+              Err(HandlingKind::Fuse(reason)) => {
+                panic!("Logger encountered a unrecoverable error: {}", reason)
+              },
+              Err(HandlingKind::Ignore) => continue,
             },
             Err(RecvTimeoutError::Disconnected) => break,
             Err(RecvTimeoutError::Timeout) => continue,
           }
         }
+
+        let _ = flows.flush();
       })
       .expect("Unable to spawn a logger thread");
 
-    let this = Self { handle, sender };
+    let this = Self { handle: Mutex::new(Some(handle)), sender, signal };
 
     SINGLETON.set(Arc::new(this)).expect("Logger has been initialized");
 
@@ -56,37 +71,43 @@ impl Logger {
     }
   }
 
-  pub fn shutdown(self) {
-    drop(self.sender);
-    self.handle.join().expect("Failed to join logger thread handle");
+  pub fn shutdown(&self) {
+    self.signal.store(false, Ordering::Release);
+    let _ = self
+      .handle
+      .lock()
+      .unwrap()
+      .take()
+      .expect("Could not call shutdown twice")
+      .join();
   }
 
-  fn log(&self, message: Message) {
-    let _ = self.sender.try_send(message);
+  fn log(&self, record: Record) {
+    let _ = self.sender.try_send(record);
   }
 
   pub fn trace(&self, content: &str) {
-    self.log(Message::new(content.to_string(), Level::Trace));
+    self.log(Record::new(content.to_string(), Level::Trace));
   }
 
   pub fn debug(&self, content: &str) {
-    self.log(Message::new(content.to_string(), Level::Debug));
+    self.log(Record::new(content.to_string(), Level::Debug));
   }
 
   pub fn info(&self, content: &str) {
-    self.log(Message::new(content.to_string(), Level::Info));
+    self.log(Record::new(content.to_string(), Level::Info));
   }
 
   pub fn warn(&self, content: &str) {
-    self.log(Message::new(content.to_string(), Level::Warn));
+    self.log(Record::new(content.to_string(), Level::Warn));
   }
 
   pub fn error(&self, content: &str) {
-    self.log(Message::new(content.to_string(), Level::Error));
+    self.log(Record::new(content.to_string(), Level::Error));
   }
 
   pub fn fatal(&self, content: &str) {
-    self.log(Message::new(content.to_string(), Level::Fatal));
+    self.log(Record::new(content.to_string(), Level::Fatal));
   }
 }
 

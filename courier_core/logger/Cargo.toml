@@ -9,3 +9,4 @@ license.workspace = true
 [dependencies]
 crossbeam = { version = "0.8.4", features = ["crossbeam-channel"] }
 chrono = "0.4.45"
+bytes = "1.11.1"

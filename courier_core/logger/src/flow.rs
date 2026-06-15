@@ -1,32 +1,30 @@
-use std::io::Write;
+use crate::{HandlingKind, record::Record};
 
 pub trait Flow: Send + 'static {
-  fn println(&mut self, msg: &str) -> Result<(), std::io::Error>;
+  fn println(&mut self, record: Record) -> Result<Record, HandlingKind>;
 
-  fn print_batch(&mut self, msgs: &[&str]) -> Result<(), std::io::Error>;
+  fn print_batch(
+    &mut self, records: Vec<Record>,
+  ) -> Result<Vec<Record>, HandlingKind>;
 
-  fn print_bytes(&mut self, msg: &[u8]) -> Result<usize, std::io::Error>;
-
-  fn flush(&mut self) -> Result<(), std::io::Error>;
+  fn flush(&mut self) -> Result<(), HandlingKind>;
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Identity;
 
 impl Flow for Identity {
-  fn print_batch(&mut self, _msgs: &[&str]) -> Result<(), std::io::Error> {
-    Ok(())
+  fn println(&mut self, record: Record) -> Result<Record, HandlingKind> {
+    Ok(record)
   }
 
-  fn println(&mut self, _msg: &str) -> Result<(), std::io::Error> {
-    Ok(())
+  fn print_batch(
+    &mut self, records: Vec<Record>,
+  ) -> Result<Vec<Record>, HandlingKind> {
+    Ok(records)
   }
 
-  fn print_bytes(&mut self, _msg: &[u8]) -> Result<usize, std::io::Error> {
-    Ok(0)
-  }
-
-  fn flush(&mut self) -> Result<(), std::io::Error> {
+  fn flush(&mut self) -> Result<(), HandlingKind> {
     Ok(())
   }
 }
@@ -37,34 +35,17 @@ pub struct Stack<F: Flow, S: Flow> {
 }
 
 impl<F: Flow, S: Flow> Flow for Stack<F, S> {
-  fn println(&mut self, msg: &str) -> Result<(), std::io::Error> {
-    self.second.println(msg)?;
-    self.first.println(msg)
+  fn println(&mut self, record: Record) -> Result<Record, HandlingKind> {
+    self.first.println(self.second.println(record)?)
   }
 
-  fn print_batch(&mut self, msgs: &[&str]) -> Result<(), std::io::Error> {
-    self.second.print_batch(msgs)?;
-    self.first.print_batch(msgs)
+  fn print_batch(
+    &mut self, records: Vec<Record>,
+  ) -> Result<Vec<Record>, HandlingKind> {
+    self.first.print_batch(self.second.print_batch(records)?)
   }
 
-  fn print_bytes(&mut self, msg: &[u8]) -> Result<usize, std::io::Error> {
-    self.second.print_bytes(msg)?;
-    self.first.print_bytes(msg)
-  }
-
-  fn flush(&mut self) -> Result<(), std::io::Error> {
-    self.second.flush()?;
-    self.first.flush()
-  }
-}
-
-impl<F: Flow, S: Flow> Write for Stack<F, S> {
-  fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-    self.second.print_bytes(buf)?;
-    self.first.print_bytes(buf)
-  }
-
-  fn flush(&mut self) -> std::io::Result<()> {
+  fn flush(&mut self) -> Result<(), HandlingKind> {
     self.second.flush()?;
     self.first.flush()
   }

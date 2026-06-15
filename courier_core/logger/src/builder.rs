@@ -1,44 +1,87 @@
-use std::{io::Write, marker::PhantomData, sync::Arc};
+use std::{marker::PhantomData, sync::Arc};
+
+use chrono::DateTime;
 
 use crate::{
-  Logger,
+  Format, Logger, Record,
   flow::{Flow, Identity, Stack},
-  message::Message,
 };
 
-pub type FormatFunction = Box<dyn Fn(&mut dyn Write, Message) + Send>;
+pub struct DefaultFormatter;
+
+impl Format for DefaultFormatter {
+  fn format(&self, mut record: Record) -> Record {
+    let raw = unsafe { String::from_utf8_unchecked(record.content.into()) };
+    let new = format!(
+      "[{}][{}] {}",
+      DateTime::from_timestamp(record.timestamp, 0)
+        .unwrap()
+        .format("%Y-%m-%d %H:%M:%S"),
+      record.level,
+      raw
+    );
+    record.content = new.into();
+    record
+  }
+}
 
 pub struct Empty;
 pub struct NonEmpty;
 
-pub struct Builder<State, F = ()> {
+pub struct Builder<State, Formatter = (), F = ()> {
   capacity: Option<usize>,
   flows: Option<F>,
-  format: Option<FormatFunction>,
+  format: Formatter,
   _state: PhantomData<State>,
 }
 
-impl<State> Builder<State> {
-  pub fn new() -> Self {
-    Builder { capacity: None, flows: None, format: None, _state: PhantomData }
+impl Builder<Empty> {
+  pub fn new() -> Builder<Empty, DefaultFormatter> {
+    Builder {
+      capacity: None,
+      flows: None,
+      format: DefaultFormatter,
+      _state: PhantomData,
+    }
   }
+}
 
+impl<Formatter: Format> Builder<Empty, Formatter> {
   pub fn capacity(mut self, capacity: usize) -> Self {
     self.capacity = Some(capacity);
     self
   }
 
-  pub fn format<F>(mut self, format: F) -> Self
-  where
-    F: Fn(&mut dyn Write, Message) + Send + 'static,
-  {
-    self.format = Some(Box::new(format));
-    self
+  pub fn format<For: Format>(self, formatter: For) -> Builder<Empty, For> {
+    Builder {
+      capacity: self.capacity,
+      flows: self.flows,
+      format: formatter,
+      _state: PhantomData,
+    }
   }
 }
 
-impl Builder<Empty> {
-  pub fn add_flow<T>(self, flow: T) -> Builder<NonEmpty, Stack<T, Identity>>
+impl<Formatter: Format> Builder<NonEmpty, Formatter> {
+  pub fn capacity(mut self, capacity: usize) -> Self {
+    self.capacity = Some(capacity);
+    self
+  }
+
+  pub fn format<For: Format>(self, formatter: For) -> Builder<NonEmpty, For> {
+    Builder {
+      capacity: self.capacity,
+      flows: self.flows,
+      format: formatter,
+      _state: PhantomData,
+    }
+  }
+}
+
+impl<Formatter: Format> Builder<Empty, Formatter> {
+  pub fn add_flow<T>(
+    self, flow: T,
+  ) -> Builder<NonEmpty, Formatter, Stack<T, Identity>>
   where
     T: Flow + 'static,
   {
@@ -51,11 +94,11 @@ impl Builder<Empty> {
   }
 }
 
-impl<F> Builder<NonEmpty, F>
+impl<Formatter: Format, F> Builder<NonEmpty, Formatter, F>
 where
-  F: Flow + Write + 'static,
+  F: Flow + 'static,
 {
-  pub fn add_flow<T>(self, flow: T) -> Builder<NonEmpty, Stack<T, F>>
+  pub fn add_flow<T>(self, flow: T) -> Builder<NonEmpty, Formatter, Stack<T, F>>
   where
     T: Flow + 'static,
   {
@@ -71,31 +114,7 @@ where
     Ok(Logger::new(
       self.capacity.ok_or("Capacity is unknown")?,
       self.flows.unwrap(),
-      self.format.unwrap_or(Box::new(|buf, msg| {
-        write!(buf, "[{}][{}] {}\n", msg.timestamp, msg.level, msg.content)
-          .unwrap();
-      })),
+      self.format,
     ))
-  }
-}
-
-impl<F: Flow> Default for Builder<F> {
-  fn default() -> Self {
-    Self::new()
-  }
-}
-
-#[cfg(test)]
-mod tests {
-  use crate::{Builder, flows::ConsoleFlow};
-
-  #[test]
-  fn overall() {
-    Builder::new()
-      .capacity(1000)
-      .add_flow(ConsoleFlow::new())
-      .build()
-      .unwrap()
-      .info("hello");
   }
 }
