@@ -87,7 +87,7 @@ impl<Formatter: Format> Builder<Empty, Formatter> {
   {
     Builder {
       capacity: self.capacity,
-      flows: Some(Stack { first: flow, second: Identity }),
+      flows: Some(Stack { inner: flow, next: Identity }),
       format: self.format,
       _state: PhantomData,
     }
@@ -104,7 +104,7 @@ where
   {
     Builder {
       capacity: self.capacity,
-      flows: Some(Stack { first: flow, second: self.flows.unwrap() }),
+      flows: Some(Stack { inner: flow, next: self.flows.unwrap() }),
       format: self.format,
       _state: PhantomData,
     }

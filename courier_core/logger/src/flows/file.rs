@@ -31,32 +31,21 @@ impl FileFlow {
 
 impl Flow for FileFlow {
   fn println(&mut self, record: Record) -> Result<Record, HandlingKind> {
-    if self.level > record.level {
-      return Ok(record);
-    }
-
     self.buf.write_all(&record.content).map_err(|_| HandlingKind::Ignore)?;
     self.buf.write_all(b"\n").map_err(|_| HandlingKind::Ignore)?;
 
     Ok(record)
   }
 
-  fn print_batch(
-    &mut self, records: Vec<Record>,
-  ) -> Result<Vec<Record>, HandlingKind> {
-    for record in records.iter() {
-      if self.level > record.level {
-        continue;
-      }
-
-      self.buf.write_all(&record.content).map_err(|_| HandlingKind::Ignore)?;
-      self.buf.write_all(b"\n").map_err(|_| HandlingKind::Ignore)?;
-    }
-
-    Ok(records)
-  }
-
   fn flush(&mut self) -> Result<(), HandlingKind> {
     self.buf.flush().map_err(|_| HandlingKind::Ignore)
+  }
+
+  fn level(&self) -> Level {
+    self.level
+  }
+
+  fn name(&self) -> &'static str {
+    "file"
   }
 }

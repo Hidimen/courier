@@ -11,7 +11,7 @@ use crossbeam::channel::{RecvTimeoutError, Sender, bounded};
 
 use crate::{Format, HandlingKind, Level, Record, flow::Flow};
 
-static SINGLETON: OnceLock<Arc<Logger>> = OnceLock::new();
+static LOGGER: OnceLock<Arc<Logger>> = OnceLock::new();
 
 #[derive(Debug)]
 pub struct Logger {
@@ -41,12 +41,18 @@ impl Logger {
         let signal = signal_cloned;
         while signal.load(Ordering::Acquire) {
           match receiver.recv_timeout(Duration::from_millis(500)) {
-            Ok(data) => match flows.println(format.format(data)) {
-              Ok(_) => continue,
-              Err(HandlingKind::Fuse(reason)) => {
-                panic!("Logger encountered a unrecoverable error: {}", reason)
-              },
-              Err(HandlingKind::Ignore) => continue,
+            Ok(data) => {
+              if !flows.can_log(&data) {
+                continue;
+              }
+
+              match flows.println(format.format(data)) {
+                Ok(_) => continue,
+                Err(HandlingKind::Fuse(reason)) => {
+                  panic!("Logger encountered a unrecoverable error: {}", reason)
+                },
+                Err(HandlingKind::Ignore) => continue,
+              }
             },
             Err(RecvTimeoutError::Disconnected) => break,
             Err(RecvTimeoutError::Timeout) => continue,
@@ -59,13 +65,13 @@ impl Logger {
 
     let this = Self { handle: Mutex::new(Some(handle)), sender, signal };
 
-    SINGLETON.set(Arc::new(this)).expect("Logger has been initialized");
+    LOGGER.set(Arc::new(this)).expect("Logger has been initialized");
 
-    SINGLETON.get().unwrap().clone()
+    LOGGER.get().unwrap().clone()
   }
 
   pub fn get_instance() -> Arc<Self> {
-    match SINGLETON.get() {
+    match LOGGER.get() {
       Some(s) => s.clone(),
       None => panic!("Logger not initialized"),
     }
@@ -86,28 +92,166 @@ impl Logger {
     let _ = self.sender.try_send(record);
   }
 
-  pub fn trace(&self, content: &str) {
-    self.log(Record::new(content.to_string(), Level::Trace));
+  pub fn trace(&self, content: String, namespace: &'static str) {
+    self.log(Record::new(content, Level::Trace, namespace));
   }
 
-  pub fn debug(&self, content: &str) {
-    self.log(Record::new(content.to_string(), Level::Debug));
+  pub fn trace_with_target(
+    &self, content: String, namespace: &'static str, target: &'static str,
+  ) {
+    self.log(Record::new_with_target(content, Level::Trace, namespace, target));
   }
 
-  pub fn info(&self, content: &str) {
-    self.log(Record::new(content.to_string(), Level::Info));
+  pub fn trace_from_static(
+    &self, content: &'static str, namespace: &'static str,
+  ) {
+    self.log(Record::new_from_static(content, Level::Trace, namespace));
   }
 
-  pub fn warn(&self, content: &str) {
-    self.log(Record::new(content.to_string(), Level::Warn));
+  pub fn trace_from_static_with_target(
+    &self, content: &'static str, namespace: &'static str, target: &'static str,
+  ) {
+    self.log(Record::new_from_static_with_target(
+      content,
+      Level::Trace,
+      namespace,
+      target,
+    ));
   }
 
-  pub fn error(&self, content: &str) {
-    self.log(Record::new(content.to_string(), Level::Error));
+  pub fn debug(&self, content: String, namespace: &'static str) {
+    self.log(Record::new(content, Level::Debug, namespace));
   }
 
-  pub fn fatal(&self, content: &str) {
-    self.log(Record::new(content.to_string(), Level::Fatal));
+  pub fn debug_with_target(
+    &self, content: String, namespace: &'static str, target: &'static str,
+  ) {
+    self.log(Record::new_with_target(content, Level::Debug, namespace, target));
+  }
+
+  pub fn debug_from_static(
+    &self, content: &'static str, namespace: &'static str,
+  ) {
+    self.log(Record::new_from_static(content, Level::Debug, namespace));
+  }
+
+  pub fn debug_from_static_with_target(
+    &self, content: &'static str, namespace: &'static str, target: &'static str,
+  ) {
+    self.log(Record::new_from_static_with_target(
+      content,
+      Level::Debug,
+      namespace,
+      target,
+    ));
+  }
+
+  pub fn info(&self, content: String, namespace: &'static str) {
+    self.log(Record::new(content, Level::Info, namespace));
+  }
+
+  pub fn info_with_target(
+    &self, content: String, namespace: &'static str, target: &'static str,
+  ) {
+    self.log(Record::new_with_target(content, Level::Info, namespace, target));
+  }
+
+  pub fn info_from_static(
+    &self, content: &'static str, namespace: &'static str,
+  ) {
+    self.log(Record::new_from_static(content, Level::Info, namespace));
+  }
+
+  pub fn info_from_static_with_target(
+    &self, content: &'static str, namespace: &'static str, target: &'static str,
+  ) {
+    self.log(Record::new_from_static_with_target(
+      content,
+      Level::Info,
+      namespace,
+      target,
+    ));
+  }
+
+  pub fn warn(&self, content: String, namespace: &'static str) {
+    self.log(Record::new(content, Level::Warn, namespace));
+  }
+
+  pub fn warn_with_target(
+    &self, content: String, namespace: &'static str, target: &'static str,
+  ) {
+    self.log(Record::new_with_target(content, Level::Warn, namespace, target));
+  }
+
+  pub fn warn_from_static(
+    &self, content: &'static str, namespace: &'static str,
+  ) {
+    self.log(Record::new_from_static(content, Level::Warn, namespace));
+  }
+
+  pub fn warn_from_static_with_target(
+    &self, content: &'static str, namespace: &'static str, target: &'static str,
+  ) {
+    self.log(Record::new_from_static_with_target(
+      content,
+      Level::Warn,
+      namespace,
+      target,
+    ));
+  }
+
+  pub fn error(&self, content: String, namespace: &'static str) {
+    self.log(Record::new(content, Level::Error, namespace));
+  }
+
+  pub fn error_with_target(
+    &self, content: String, namespace: &'static str, target: &'static str,
+  ) {
+    self.log(Record::new_with_target(content, Level::Error, namespace, target));
+  }
+
+  pub fn error_from_static(
+    &self, content: &'static str, namespace: &'static str,
+  ) {
+    self.log(Record::new_from_static(content, Level::Error, namespace));
+  }
+
+  pub fn error_from_static_with_target(
+    &self, content: &'static str, namespace: &'static str, target: &'static str,
+  ) {
+    self.log(Record::new_from_static_with_target(
+      content,
+      Level::Error,
+      namespace,
+      target,
+    ));
+  }
+
+  pub fn fatal(&self, content: String, namespace: &'static str) {
+    self.log(Record::new(content, Level::Fatal, namespace));
+  }
+
+  pub fn fatal_with_target(
+    &self, content: String, namespace: &'static str, target: &'static str,
+  ) {
+    self.log(Record::new_with_target(content, Level::Fatal, namespace, target));
+  }
+
+  pub fn fatal_from_static(
+    &self, content: &'static str, namespace: &'static str,
+  ) {
+    self.log(Record::new_from_static(content, Level::Fatal, namespace));
+  }
+
+  pub fn fatal_from_static_with_target(
+    &self, content: &'static str, namespace: &'static str, target: &'static str,
+  ) {
+    self.log(Record::new_from_static_with_target(
+      content,
+      Level::Fatal,
+      namespace,
+      target,
+    ));
   }
 }
 

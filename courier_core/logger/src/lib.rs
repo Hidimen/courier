@@ -6,6 +6,8 @@ mod format;
 mod level;
 mod logger;
 mod record;
+#[macro_use]
+pub mod macros;
 
 pub use builder::Builder;
 pub use error::HandlingKind;
