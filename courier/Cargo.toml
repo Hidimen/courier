@@ -6,6 +6,9 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
+[lib]
+doc = false
+
 [dependencies]
 depot = { path = "../courier_core/depot" }
 network = { path = "../courier_core/network" }

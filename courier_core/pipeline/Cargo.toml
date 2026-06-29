@@ -1,0 +1,11 @@
+[package]
+name = "pipeline"
+description = "Pipeline system"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+network = { path = "../network" }
+protocol = { path = "../protocol" }

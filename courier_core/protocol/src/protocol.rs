@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use network::{
-  Frame,
+  Context, Frame,
   transport::{DatagramTransport, StreamTransport},
 };
 
@@ -8,6 +8,7 @@ use crate::error::ProtocolError;
 
 pub trait Protocol: Send + Sync + Sized + 'static {
   type Error: ProtocolError;
+  type Context: Context;
 
   fn name() -> &'static str;
   fn version() -> &'static str;
