@@ -1,42 +1,52 @@
-use std::fmt::Display;
+use std::error::Error;
 
-use protocol::error::ProtocolError;
 use thiserror::Error;
 use tokio::task::JoinError;
 
+/// Errors that can occur while running a [`Depot`](crate::Depot).
+///
+/// `E` is the error type of the pipeline's middleware chain.
 #[derive(Debug, Error)]
-pub enum DepotError<E: ProtocolError> {
+pub enum DepotError<E: Error + Send + Sync + 'static> {
+  /// An I/O error from the underlying transport.
   #[error("Io error occurred: {0}")]
-  Io(
-    #[from]
-    #[source]
-    std::io::Error,
-  ),
+  Io(#[source] std::io::Error),
 
-  #[error("Protocol error occurred: {0}")]
-  Protocol(#[from] ProtocolErrorWrapper<E>),
+  /// An error returned by protocol or middlewares.
+  #[error("Middleware error: {0}")]
+  Process(#[source] E),
 
+  /// A spawned task terminated unexpectedly.
   #[error("Task terminated: {0}")]
   TaskTerminated(JoinError),
 }
 
-#[derive(Debug)]
-pub struct ProtocolErrorWrapper<E: ProtocolError>(pub E);
-
-impl<E: ProtocolError> std::error::Error for ProtocolErrorWrapper<E> {
-  fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-    Some(&self.0)
+impl<E: Error + Send + Sync + 'static> From<std::io::Error> for DepotError<E> {
+  fn from(err: std::io::Error) -> Self {
+    DepotError::Io(err)
   }
 }
 
-impl<E: ProtocolError> Display for ProtocolErrorWrapper<E> {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    write!(f, "{}", self.0)
-  }
-}
+/// Errors that can occur while building a [`Depot`](crate::Depot) via
+/// [`DepotBuilder`](crate::DepotBuilder).
+///
+/// Each variant indicates a required field that was not set before
+/// [`build`](crate::DepotBuilder::build) was called.
+#[derive(Debug, Error)]
+pub enum DepotBuildError {
+  /// Transport was not set.
+  #[error("transport is required but was not set")]
+  MissingTransport,
 
-impl<E: ProtocolError> From<E> for ProtocolErrorWrapper<E> {
-  fn from(value: E) -> Self {
-    Self(value)
-  }
+  /// Protocol was not set.
+  #[error("protocol is required but was not set")]
+  MissingProtocol,
+
+  /// Pipeline was not set.
+  #[error("pipeline is required but was not set")]
+  MissingPipeline,
+
+  /// Logger was not set.
+  #[error("logger is required but was not set")]
+  MissingLogger,
 }

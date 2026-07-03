@@ -82,6 +82,7 @@ dependencies = [
  "depot",
  "logger",
  "network",
+ "pipeline",
  "protocol",
 ]
 
@@ -146,7 +147,9 @@ name = "depot"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "logger",
  "network",
+ "pipeline",
  "protocol",
  "thiserror",
  "tokio",

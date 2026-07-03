@@ -1,7 +1,11 @@
-mod layer;
+mod builder;
+mod middleware;
+mod mixin;
 mod pipeline;
-mod service;
+mod stack;
 
-pub use layer::Layer;
+pub use builder::{Empty, NonEmpty, PipelineBuilder};
+pub use middleware::Middleware;
+pub use mixin::Mixin;
 pub use pipeline::Pipeline;
-pub use service::Service;
+pub use stack::Stack;

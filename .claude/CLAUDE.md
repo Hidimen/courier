@@ -14,6 +14,7 @@ cargo test -p logger           # run logger tests
 cargo test --doc               # run doc tests
 cargo fmt --all -- --check     # check formatting
 cargo clippy --all-features    # lint everything
+cargo tarpaulin                # test coverage
 ```
 
 ## Code Style
@@ -66,6 +67,18 @@ Module-level docs use `//!` with the same structure.
 - Use `async-trait` (`0.1.89`) for traits with async methods.
 - Tokio (`1.52.1`) is the async runtime — use `#[tokio::test]` for async tests.
 - Type-state builder pattern is used in `logger::Builder<F, M>` — follow that pattern for new builders.
+- Do not use `async-trait` unless necessary. Instead, `async fn in trait` is preferred. For example:
+```rust
+// Define
+trait A {
+  fn async_example() -> impl Future<Output = /* Concrete Type */> + Send;
+}
+
+// Impl
+impl Type for A {
+   async fn async_example() -> /* Concrete Type */{}
+}
+```
 
 ## Architecture Conventions
 
@@ -75,18 +88,12 @@ Module-level docs use `//!` with the same structure.
 - The `courier` facade re-exports core crates. New core crates should be added to both `courier/Cargo.toml` dependencies and `courier/src/lib.rs` re-exports.
 - Each core crate exposes its public API via `pub use` in `lib.rs` and `pub mod` for sub-modules.
 
-### Error Handling
-
-- `depot` errors wrap protocol errors via `ProtocolErrorWrapper<E>` newtype.
-- Logger errors use `HandlingKind::Fuse` (unrecoverable, logger panics) and `HandlingKind::Ignore` (recoverable, silently skipped).
-- Prefer `thiserror` for new error types. Follow the `ProtocolError` severity pattern for protocol-level errors.
-
 ## Testing
 
-- Currently only `logger` has tests (unit tests in each module + integration tests in `logger/tests/`).
 - New code in other crates should add tests.
 - Use `#[cfg(test)]` modules for unit tests embedded in source files.
 - Doc tests in `# Examples` sections serve as both documentation and tests — ensure they compile and run.
+- Use `cargo tarpaulin` to test code coverage. This is a must.
 
 ## Misc
 

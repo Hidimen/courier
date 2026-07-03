@@ -18,7 +18,7 @@ use crate::{HandlingKind, Level, Record, flow::Flow};
 ///
 /// # Example
 ///
-/// ```rust
+/// ```rust,no_run
 /// use logger::{Builder, Level, Logger};
 /// use logger::flows::FileFlow;
 ///

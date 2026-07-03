@@ -11,6 +11,7 @@ doc = false
 
 [dependencies]
 depot = { path = "../courier_core/depot" }
-network = { path = "../courier_core/network" }
-protocol = { path = "../courier_core/protocol" }
 logger = { path = "../courier_core/logger" }
+network = { path = "../courier_core/network" }
+pipeline = { path = "../courier_core/pipeline" }
+protocol = { path = "../courier_core/protocol" }

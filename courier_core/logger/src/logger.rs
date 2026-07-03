@@ -127,6 +127,14 @@ impl Logger {
     Arc::new(Self { handle: Mutex::new(Some(handle)), sender, signal })
   }
 
+  pub fn new_with_default() -> Arc<Self> {
+    Self::new(
+      1000,
+      crate::flows::ConsoleFlow::new(Level::Info),
+      crate::DefaultFormatter,
+    )
+  }
+
   /// Installs this logger as the global singleton.
   ///
   /// # Panics

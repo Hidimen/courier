@@ -1,6 +1,5 @@
-use async_trait::async_trait;
 use network::{
-  Context, Frame,
+  Frame,
   transport::{DatagramTransport, StreamTransport},
 };
 
@@ -8,26 +7,25 @@ use crate::error::ProtocolError;
 
 pub trait Protocol: Send + Sync + Sized + 'static {
   type Error: ProtocolError;
-  type Context: Context;
+  type Request: Send + 'static;
+  type Response: Send + 'static;
 
   fn name() -> &'static str;
   fn version() -> &'static str;
 }
 
-#[async_trait]
 pub trait StreamProtocol<T: StreamTransport>: Protocol {
-  type Data: Sized + 'static;
+  fn decode(
+    &self, data: T::ReadHalf,
+  ) -> impl Future<Output = Result<Self::Request, Self::Error>> + Send;
 
-  async fn decode(&self, data: T::ReadHalf) -> Result<Self::Data, Self::Error>;
-
-  async fn encode(&self, data: Self::Data) -> Frame;
+  fn encode(&self, data: Self::Response) -> impl Future<Output = Frame> + Send;
 }
 
-#[async_trait]
 pub trait DatagramProtocol<T: DatagramTransport>: Protocol {
-  type Data: Sized + 'static;
+  fn decode(
+    &self, data: &[u8],
+  ) -> impl Future<Output = Result<Self::Request, Self::Error>> + Send;
 
-  async fn decode(&self, data: &[u8]) -> Result<Self::Data, Self::Error>;
-
-  async fn encode(&self, data: Self::Data) -> Frame;
+  fn encode(&self, data: Self::Response) -> impl Future<Output = Frame> + Send;
 }
