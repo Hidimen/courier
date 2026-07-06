@@ -1,6 +1,6 @@
 [package]
-name = "pipeline"
-description = "Pipeline system"
+name = "relay"
+description = "Relay system"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -9,3 +9,6 @@ license.workspace = true
 [dependencies]
 network = { path = "../network" }
 protocol = { path = "../protocol" }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }

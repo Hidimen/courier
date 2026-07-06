@@ -69,8 +69,7 @@ impl Logger {
   /// Creates a new `Logger` instance without installing it as the global
   /// singleton.
   ///
-  /// The logger spawns a background thread that will run until the returned
-  /// `Arc<Logger>` is dropped.
+  /// The logger spawns a background thread that will run until the logger is dropped.
   ///
   /// # Parameters
   ///
@@ -82,9 +81,7 @@ impl Logger {
   ///
   /// Panics if the internal thread cannot be spawned (e.g. the OS is out of
   /// resources).
-  pub fn new<F, Formatter>(
-    capacity: usize, flows: F, format: Formatter,
-  ) -> Arc<Self>
+  pub fn new<F, Formatter>(capacity: usize, flows: F, format: Formatter) -> Self
   where
     F: Flow,
     Formatter: Format,
@@ -124,15 +121,7 @@ impl Logger {
       })
       .expect("Unable to spawn a logger thread");
 
-    Arc::new(Self { handle: Mutex::new(Some(handle)), sender, signal })
-  }
-
-  pub fn new_with_default() -> Arc<Self> {
-    Self::new(
-      1000,
-      crate::flows::ConsoleFlow::new(Level::Info),
-      crate::DefaultFormatter,
-    )
+    Self { handle: Mutex::new(Some(handle)), sender, signal }
   }
 
   /// Installs this logger as the global singleton.
@@ -140,8 +129,10 @@ impl Logger {
   /// # Panics
   ///
   /// Panics if a logger has already been installed.
-  pub fn install(self: &Arc<Self>) {
-    LOGGER.set(self.clone()).expect("Logger has already been installed");
+  pub fn install(self) -> Arc<Self> {
+    let this = Arc::new(self);
+    LOGGER.set(this.clone()).expect("Logger has already been installed");
+    this
   }
 
   /// Returns a clone of the globally-installed logger.
@@ -365,6 +356,16 @@ impl Logger {
       namespace,
       target,
     ));
+  }
+}
+
+impl Default for Logger {
+  fn default() -> Self {
+    Self::new(
+      1000,
+      crate::flows::ConsoleFlow::new(Level::Info),
+      crate::DefaultFormatter,
+    )
   }
 }
 

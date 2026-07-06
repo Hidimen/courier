@@ -82,8 +82,8 @@ dependencies = [
  "depot",
  "logger",
  "network",
- "pipeline",
  "protocol",
+ "relay",
 ]
 
 [[package]]
@@ -149,8 +149,8 @@ dependencies = [
  "async-trait",
  "logger",
  "network",
- "pipeline",
  "protocol",
+ "relay",
  "thiserror",
  "tokio",
 ]
@@ -283,14 +283,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
 
 [[package]]
-name = "pipeline"
-version = "0.1.0"
-dependencies = [
- "network",
- "protocol",
-]
-
-[[package]]
 name = "proc-macro2"
 version = "1.0.106"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -314,6 +306,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "41f2619966050689382d2b44f664f4bc593e129785a36d6ee376ddf37259b924"
 dependencies = [
  "proc-macro2",
+]
+
+[[package]]
+name = "relay"
+version = "0.1.0"
+dependencies = [
+ "network",
+ "protocol",
+ "tokio",
 ]
 
 [[package]]
@@ -386,7 +387,19 @@ dependencies = [
  "mio",
  "pin-project-lite",
  "socket2",
+ "tokio-macros",
  "windows-sys",
+]
+
+[[package]]
+name = "tokio-macros"
+version = "2.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "385a6cb71ab9ab790c5fe8d67f1645e6c450a7ce006a33de03daa956cf70a496"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]

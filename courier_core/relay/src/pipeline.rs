@@ -2,20 +2,21 @@ use crate::Middleware;
 
 /// An assembled pipeline ready to handle requests.
 ///
-/// Created via [`PipelineBuilder::build`](crate::PipelineBuilder::build)
-/// — users cannot construct this directly. Call [`handle`](Self::handle)
-/// to send a request through every middleware in sequence.
+/// Created via
+/// [`PipelineBuilder::build`](crate::PipelineBuilder::build) — users
+/// cannot construct this directly. Call [`handle`](Self::handle) to send
+/// a request through every middleware in sequence.
 ///
 /// # Short-circuit
 ///
-/// Short-circuit is achieved through [`Mixin`](crate::Mixin) wrappers.
+/// Short-circuit is achieved through [`Layer`](crate::Layer) wrappers.
 /// A wrapper that decides **not** to call `self.inner.handle(req)`
 /// immediately returns, skipping the remainder of the chain.
 ///
 /// # Examples
 ///
 /// ```rust,ignore
-/// use pipeline::PipelineBuilder;
+/// use relay::PipelineBuilder;
 ///
 /// let pipeline = PipelineBuilder::new()
 ///   .middleware(core_service)
@@ -31,7 +32,7 @@ impl<M> Pipeline<M> {
   /// Sends `req` through every middleware in the pipeline.
   ///
   /// Returns the final response or the first error encountered. If a
-  /// [`Mixin`](crate::Mixin) wrapper short-circuits, the inner chain
+  /// [`Layer`](crate::Layer) wrapper short-circuits, the inner chain
   /// is skipped.
   ///
   /// The request type `Req` is inferred from the argument. Trait bounds

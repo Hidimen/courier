@@ -13,5 +13,5 @@ doc = false
 depot = { path = "../courier_core/depot" }
 logger = { path = "../courier_core/logger" }
 network = { path = "../courier_core/network" }
-pipeline = { path = "../courier_core/pipeline" }
+relay = { path = "../courier_core/relay" }
 protocol = { path = "../courier_core/protocol" }

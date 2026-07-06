@@ -40,12 +40,10 @@ impl Format for DefaultFormatter {
   }
 }
 
-/// A marker type representing the initial state of a [`Builder`] when no
-/// flows have been added yet.
+#[doc(hidden)]
 pub struct Empty;
 
-/// A marker type representing the state of a [`Builder`] after at least one
-/// flow has been added.
+#[doc(hidden)]
 pub struct NonEmpty;
 
 /// A builder for constructing a [`Logger`] with a fluent API.
@@ -265,8 +263,7 @@ where
       self.flows.unwrap(),
       self.format,
     );
-    logger.install();
-    Ok(logger)
+    Ok(logger.install())
   }
 
   /// Builds the logger without installing it as the global singleton.
@@ -294,11 +291,11 @@ where
   /// drop(logger);
   /// ```
   pub fn build_local(self) -> Result<Arc<Logger>, &'static str> {
-    Ok(Logger::new(
+    Ok(Arc::new(Logger::new(
       self.capacity.ok_or("Capacity is unknown")?,
       self.flows.unwrap(),
       self.format,
-    ))
+    )))
   }
 }
 

@@ -16,7 +16,7 @@ pub trait Protocol: Send + Sync + Sized + 'static {
 
 pub trait StreamProtocol<T: StreamTransport>: Protocol {
   fn decode(
-    &self, data: T::ReadHalf,
+    &self, data: &mut T::ReadHalf,
   ) -> impl Future<Output = Result<Self::Request, Self::Error>> + Send;
 
   fn encode(&self, data: Self::Response) -> impl Future<Output = Frame> + Send;

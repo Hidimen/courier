@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use logger::Logger;
 use network::transport::Transport;
-use pipeline::Pipeline;
+use relay::Pipeline;
 
 use crate::{Depot, error::DepotBuildError};
 
@@ -219,7 +219,7 @@ mod tests {
   #[derive(Debug)]
   struct StubMiddleware;
 
-  impl pipeline::Middleware<()> for StubMiddleware {
+  impl relay::Middleware<()> for StubMiddleware {
     type Response = ();
     type Error = StubError;
 
@@ -240,7 +240,7 @@ mod tests {
 
   /// A stub pipeline for testing.
   fn stub_pipeline() -> Pipeline<StubMiddleware> {
-    use pipeline::PipelineBuilder;
+    use relay::PipelineBuilder;
     PipelineBuilder::new().middleware(StubMiddleware).build()
   }
 

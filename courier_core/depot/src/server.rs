@@ -5,9 +5,9 @@ use network::{
   stream::{SplitStream, WriteHalf},
   transport::{DatagramTransport, StreamTransport},
 };
-use pipeline::Middleware;
-use pipeline::Pipeline;
 use protocol::{DatagramProtocol, StreamProtocol};
+use relay::Middleware;
+use relay::Pipeline;
 
 use crate::error::DepotError;
 
@@ -37,7 +37,6 @@ impl<T, P, M> Depot<T, P, M> {
   pub fn new(
     transport: T, protocol: P, pipeline: Pipeline<M>, logger: Arc<Logger>,
   ) -> Self {
-    logger.install();
     Self {
       transport,
       protocol: Arc::new(protocol),
@@ -76,14 +75,14 @@ where
   /// the result, and writes it back to the client.
   pub async fn run_stream(&mut self) -> Result<(), DepotError<M::Error>> {
     loop {
-      let (read, mut write) = self.transport.accept().await?.split();
+      let (mut read, mut write) = self.transport.accept().await?.split();
       let protocol = self.protocol.clone();
       let pipeline = self.pipeline.clone();
 
       let data: Result<network::Frame, DepotError<M::Error>> =
         match tokio::spawn(async move {
           let ctx =
-            protocol.decode(read).await.map_err(ProtocolErrorWrapper)?;
+            protocol.decode(&mut read).await.map_err(ProtocolErrorWrapper)?;
           let ctx = pipeline.handle(ctx).await.map_err(DepotError::Process)?;
           let frame = protocol.encode(ctx).await;
           Ok(frame)

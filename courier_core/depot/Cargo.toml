@@ -12,6 +12,6 @@ async-trait.workspace = true
 thiserror.workspace = true
 
 network = { path = "../network" }
-pipeline = { path = "../pipeline" }
+relay = { path = "../relay" }
 protocol = { path = "../protocol" }
 logger = { path = "../logger" }
