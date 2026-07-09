@@ -11,5 +11,4 @@ license = "Apache-2.0"
 
 [workspace.dependencies]
 tokio = "1.52.1"
-async-trait = "0.1.89"
 thiserror = "2.0.18"

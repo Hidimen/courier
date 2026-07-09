@@ -12,17 +12,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "async-trait"
-version = "0.1.89"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9035ad2d096bed7955a320ee7e2230574d28fd3c3a0f186cbea1ff3c7eed5dbb"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
 name = "autocfg"
 version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -146,7 +135,6 @@ checksum = "d0a5c400df2834b80a4c3327b3aad3a4c4cd4de0629063962b03235697506a28"
 name = "depot"
 version = "0.1.0"
 dependencies = [
- "async-trait",
  "logger",
  "network",
  "protocol",
@@ -256,7 +244,6 @@ dependencies = [
 name = "network"
 version = "0.1.0"
 dependencies = [
- "async-trait",
  "bytes",
  "tokio",
 ]
@@ -295,7 +282,6 @@ dependencies = [
 name = "protocol"
 version = "0.1.0"
 dependencies = [
- "async-trait",
  "network",
 ]
 

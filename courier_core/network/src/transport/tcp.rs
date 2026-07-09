@@ -68,6 +68,20 @@ impl Stream for TcpStream {
     self.0.peek(buf).await
   }
 
+  async fn ready(
+    &self, interest: tokio::io::Interest,
+  ) -> Result<tokio::io::Ready> {
+    self.0.ready(interest).await
+  }
+
+  fn try_read(&self, buf: &mut [u8]) -> Result<usize> {
+    self.0.try_read(buf)
+  }
+
+  fn try_write(&self, buf: &[u8]) -> Result<usize> {
+    self.0.try_write(buf)
+  }
+
   fn peer_addr(&self) -> Result<SocketAddr> {
     self.0.peer_addr()
   }
@@ -95,8 +109,22 @@ impl ReadHalf for TcpReadHalf {
     self.0.read(buf).await
   }
 
+  async fn peek(&mut self, buf: &mut [u8]) -> Result<usize> {
+    self.0.peek(buf).await
+  }
+
   fn local_addr(&self) -> Result<SocketAddr> {
     self.0.local_addr()
+  }
+
+  async fn ready(
+    &self, interest: tokio::io::Interest,
+  ) -> Result<tokio::io::Ready> {
+    self.0.ready(interest).await
+  }
+
+  fn try_read(&self, buf: &mut [u8]) -> Result<usize> {
+    self.0.try_read(buf)
   }
 }
 
@@ -113,6 +141,16 @@ impl WriteHalf for TcpWriteHalf {
 
   fn peer_addr(&self) -> Result<SocketAddr> {
     self.0.peer_addr()
+  }
+
+  async fn ready(
+    &self, interest: tokio::io::Interest,
+  ) -> Result<tokio::io::Ready> {
+    self.0.ready(interest).await
+  }
+
+  fn try_write(&self, buf: &[u8]) -> Result<usize> {
+    self.0.try_write(buf)
   }
 
   async fn flush(&mut self) -> Result<()> {

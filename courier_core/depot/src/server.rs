@@ -2,7 +2,8 @@ use std::sync::Arc;
 
 use logger::Logger;
 use network::{
-  stream::{SplitStream, WriteHalf},
+  KeepAlive,
+  stream::{SplitStream, StreamState, WriteHalf, check_state},
   transport::{DatagramTransport, StreamTransport},
 };
 use protocol::{DatagramProtocol, StreamProtocol};
@@ -73,27 +74,87 @@ where
   /// For each accepted connection, this decodes the incoming stream,
   /// passes the decoded context through the middleware chain, encodes
   /// the result, and writes it back to the client.
+  ///
+  /// The inner loop respects keep-alive directives returned by the
+  /// protocol's [`encode`](StreamProtocol::encode):
+  ///
+  /// - [`KeepAlive::Keep`] — continue processing requests on this
+  ///   connection indefinitely.
+  /// - [`KeepAlive::Close`] — close the connection after the current
+  ///   response.
+  /// - [`KeepAlive::UpTo`] — process at most `n` requests, then close.
+  /// - [`KeepAlive::Timeout`] — wrap each subsequent decode in a
+  ///   timeout; if no request arrives within the duration, close the
+  ///   connection.
+  /// - [`KeepAlive::Pending`] — treated as [`KeepAlive::Keep`]; the
+  ///   protocol hasn't decided yet.
   pub async fn run_stream(&mut self) -> Result<(), DepotError<M::Error>> {
     loop {
       let (mut read, mut write) = self.transport.accept().await?.split();
       let protocol = self.protocol.clone();
       let pipeline = self.pipeline.clone();
 
-      let data: Result<network::Frame, DepotError<M::Error>> =
-        match tokio::spawn(async move {
-          let ctx =
-            protocol.decode(&mut read).await.map_err(ProtocolErrorWrapper)?;
-          let ctx = pipeline.handle(ctx).await.map_err(DepotError::Process)?;
-          let frame = protocol.encode(ctx).await;
-          Ok(frame)
-        })
-        .await
-        {
-          Ok(d) => d,
-          Err(e) => return Err(DepotError::TaskTerminated(e)),
-        };
-      write.write_all(data?.as_ref()).await?;
-      write.flush().await?
+      tokio::spawn(async move {
+        let mut request_count: usize = 0;
+        let mut keep_alive = KeepAlive::Pending;
+
+        loop {
+          // Probe the connection state before attempting a decode.
+          // If the peer has already closed or the stream is broken,
+          // stop this connection handler.
+          match check_state(&mut read, &mut write).await {
+            StreamState::Open | StreamState::HalfOpen => {},
+            _ => break,
+          }
+
+          // Decode the next request. When the keep-alive directive is
+          // `Timeout`, wrap the decode future so the task does not
+          // wait indefinitely for a new request.
+          let req = match keep_alive {
+            KeepAlive::Timeout(d) => {
+              match tokio::time::timeout(d, protocol.decode(&mut read)).await {
+                Ok(Ok(req)) => req,
+                Ok(Err(_)) => break,
+                Err(_elapsed) => break,
+              }
+            },
+            _ => match protocol.decode(&mut read).await {
+              Ok(req) => req,
+              Err(_) => break,
+            },
+          };
+
+          request_count += 1;
+
+          // Pass the request through the middleware pipeline.
+          let resp = match pipeline.handle(req).await {
+            Ok(resp) => resp,
+            Err(_) => break,
+          };
+
+          // Encode the response and obtain the updated keep-alive
+          // directive from the protocol.
+          let (frame, new_keep_alive) = match protocol.encode(resp).await {
+            Ok(result) => result,
+            Err(_) => break,
+          };
+
+          // Write the response back to the client.
+          if write.write_all(frame.as_ref()).await.is_err() {
+            break;
+          }
+
+          keep_alive = new_keep_alive;
+
+          // Apply the keep-alive directive to decide whether to
+          // continue processing on this connection.
+          match keep_alive {
+            KeepAlive::Close => break,
+            KeepAlive::UpTo(n) if request_count >= n => break,
+            _ => continue,
+          }
+        }
+      });
     }
   }
 }
@@ -121,10 +182,15 @@ where
 
       let data: Result<network::Frame, DepotError<M::Error>> =
         match tokio::spawn(async move {
-          let ctx =
-            protocol.decode(&buf).await.map_err(ProtocolErrorWrapper)?;
+          let ctx = protocol
+            .decode(&buf)
+            .await
+            .map_err(|e| DepotError::Process(e.into()))?;
           let ctx = pipeline.handle(ctx).await.map_err(DepotError::Process)?;
-          let frame = protocol.encode(ctx).await;
+          let (frame, _keep_alive) = protocol
+            .encode(ctx)
+            .await
+            .map_err(|e| DepotError::Process(e.into()))?;
           Ok(frame)
         })
         .await
@@ -135,36 +201,5 @@ where
 
       self.transport.send_to(data?.as_ref(), peer).await?;
     }
-  }
-}
-
-/// A thin adapter that wraps a protocol error so it can be used inside
-/// a spawned task alongside middleware errors.
-#[derive(Debug)]
-struct ProtocolErrorWrapper<E>(pub E);
-
-impl<E: std::fmt::Display + std::error::Error + 'static> std::fmt::Display
-  for ProtocolErrorWrapper<E>
-{
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    write!(f, "{}", self.0)
-  }
-}
-
-impl<E: std::fmt::Display + std::error::Error + 'static> std::error::Error
-  for ProtocolErrorWrapper<E>
-{
-  fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-    Some(&self.0)
-  }
-}
-
-impl<E, ME> From<ProtocolErrorWrapper<E>> for DepotError<ME>
-where
-  E: std::error::Error + Send + Sync + 'static + Into<ME>,
-  ME: std::error::Error + Send + Sync + 'static,
-{
-  fn from(value: ProtocolErrorWrapper<E>) -> Self {
-    DepotError::Process(value.0.into())
   }
 }

@@ -7,6 +7,5 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
-tokio = { workspace = true, features = ["net", "io-util"] }
+tokio = { workspace = true, features = ["net", "io-util", "sync", "rt", "macros", "time"] }
 bytes = "1.11.1"
-async-trait.workspace = true
