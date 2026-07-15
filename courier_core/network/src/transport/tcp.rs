@@ -1,9 +1,10 @@
 use std::{
   io::Result,
   net::{SocketAddr, TcpListener, ToSocketAddrs},
+  task::{Context, Poll},
 };
 
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncReadExt, AsyncWriteExt, ReadBuf};
 
 use crate::{
   stream::{ReadHalf, SplitStream, Stream, WriteHalf},
@@ -111,6 +112,13 @@ impl ReadHalf for TcpReadHalf {
 
   async fn peek(&mut self, buf: &mut [u8]) -> Result<usize> {
     self.0.peek(buf).await
+  }
+
+  fn poll_peek(
+    &mut self, cx: &mut Context<'_>, buf: &mut [u8],
+  ) -> Poll<Result<usize>> {
+    let mut read_buf = ReadBuf::new(buf);
+    self.0.poll_peek(cx, &mut read_buf)
   }
 
   fn local_addr(&self) -> Result<SocketAddr> {

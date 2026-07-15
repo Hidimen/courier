@@ -1,0 +1,19 @@
+[package]
+name = "builtin_echo"
+description = "Echo builtins"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lib]
+doc = false
+
+[dependencies]
+thiserror = "2.0.18"
+
+depot = { path = "../../courier_core/depot" }
+relay = { path = "../../courier_core/relay" }
+network = { path = "../../courier_core/network" }
+logger = { path = "../../courier_core/logger" }
+protocol = { path = "../../courier_core/protocol" }

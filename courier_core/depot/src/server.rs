@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use logger::Logger;
+use logger::{Logger, error, warn};
 use network::{
   KeepAlive,
   stream::{SplitStream, StreamState, WriteHalf, check_state},
@@ -67,7 +67,6 @@ where
   P: StreamProtocol<T>,
   M: Middleware<P::Request, Response = P::Response> + Send + Sync + 'static,
   M::Error: Send + 'static,
-  P::Error: Into<M::Error>,
 {
   /// Runs the stream server loop.
   ///
@@ -88,9 +87,15 @@ where
   ///   connection.
   /// - [`KeepAlive::Pending`] — treated as [`KeepAlive::Keep`]; the
   ///   protocol hasn't decided yet.
-  pub async fn run_stream(&mut self) -> Result<(), DepotError<M::Error>> {
+  pub async fn run_stream(&mut self) {
     loop {
-      let (mut read, mut write) = self.transport.accept().await?.split();
+      let (mut read, mut write) = match self.transport.accept().await {
+        Ok(s) => s.split(),
+        Err(e) => {
+          error!("main", "IO error: {}", e);
+          continue;
+        },
+      };
       let protocol = self.protocol.clone();
       let pipeline = self.pipeline.clone();
 
@@ -114,13 +119,19 @@ where
             KeepAlive::Timeout(d) => {
               match tokio::time::timeout(d, protocol.decode(&mut read)).await {
                 Ok(Ok(req)) => req,
-                Ok(Err(_)) => break,
+                Ok(Err(e)) => {
+                  warn!("main", "An error emitted by protocol decoder: {}", e);
+                  break;
+                },
                 Err(_elapsed) => break,
               }
             },
             _ => match protocol.decode(&mut read).await {
               Ok(req) => req,
-              Err(_) => break,
+              Err(e) => {
+                warn!("main", "An error emitted by protocol decoder: {}", e);
+                break;
+              },
             },
           };
 
@@ -129,19 +140,28 @@ where
           // Pass the request through the middleware pipeline.
           let resp = match pipeline.handle(req).await {
             Ok(resp) => resp,
-            Err(_) => break,
+            Err(e) => {
+              warn!("main", "An error emitted by middleware handler: {}", e);
+              break;
+            },
           };
 
           // Encode the response and obtain the updated keep-alive
           // directive from the protocol.
           let (frame, new_keep_alive) = match protocol.encode(resp).await {
             Ok(result) => result,
-            Err(_) => break,
+            Err(e) => {
+              warn!("main", "An error emitted by protocol encoder: {}", e);
+              break;
+            },
           };
 
-          // Write the response back to the client.
-          if write.write_all(frame.as_ref()).await.is_err() {
-            break;
+          match write.write_all(frame.as_ref()).await {
+            Ok(_) => {},
+            Err(e) => {
+              warn!("main", "An error occurred when sending data: {}", e);
+              break;
+            },
           }
 
           keep_alive = new_keep_alive;
@@ -172,34 +192,59 @@ where
   /// For each received datagram, this decodes the bytes, passes the
   /// decoded context through the middleware chain, encodes the result,
   /// and sends it back to the peer.
-  pub async fn run_datagram(&mut self) -> Result<(), DepotError<M::Error>> {
+  pub async fn run_datagram(&mut self) {
     loop {
       let mut buf = [0u8; 1024];
-      let (_, peer) = self.transport.recv_from(&mut buf).await?;
+      let (_, peer) = match self.transport.recv_from(&mut buf).await {
+        Ok(d) => d,
+        Err(e) => {
+          error!("main", "IO error: {}", e);
+          continue;
+        },
+      };
 
       let protocol = self.protocol.clone();
       let pipeline = self.pipeline.clone();
 
-      let data: Result<network::Frame, DepotError<M::Error>> =
+      let data: Result<network::Frame, DepotError> =
         match tokio::spawn(async move {
-          let ctx = protocol
-            .decode(&buf)
-            .await
-            .map_err(|e| DepotError::Process(e.into()))?;
-          let ctx = pipeline.handle(ctx).await.map_err(DepotError::Process)?;
-          let (frame, _keep_alive) = protocol
-            .encode(ctx)
-            .await
-            .map_err(|e| DepotError::Process(e.into()))?;
+          let ctx = protocol.decode(&buf).await.map_err(|e| {
+            error!("main", "An error emitted by protocol decoder: {}", e);
+            DepotError::Execution
+          })?;
+          let ctx = pipeline.handle(ctx).await.map_err(|e| {
+            error!("main", "An error emitted by middleware handler: {}", e);
+            DepotError::Execution
+          })?;
+          let (frame, _keep_alive) =
+            protocol.encode(ctx).await.map_err(|e| {
+              error!("main", "An error emitted by protocol encoder: {}", e);
+              DepotError::Execution
+            })?;
           Ok(frame)
         })
         .await
         {
           Ok(d) => d,
-          Err(e) => return Err(DepotError::TaskTerminated(e)),
+          Err(e) => {
+            error!("main", "Task terminated: {}", e);
+            continue;
+          },
         };
 
-      self.transport.send_to(data?.as_ref(), peer).await?;
+      match data {
+        Ok(frame) => match self.transport.send_to(frame.as_ref(), peer).await {
+          Ok(_) => continue,
+          Err(e) => {
+            error!("main", "Failed to send data to peer: {}", e);
+            continue;
+          },
+        },
+        Err(DepotError::Execution) => {
+          continue;
+        },
+        _ => unreachable!(),
+      };
     }
   }
 }

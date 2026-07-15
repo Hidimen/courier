@@ -1,7 +1,7 @@
 use std::{
   io::{Error, ErrorKind, Result},
   net::SocketAddr,
-  time::Duration,
+  task::{Context, Poll, Waker},
 };
 
 use tokio::io::{Interest, Ready};
@@ -145,6 +145,24 @@ pub trait ReadHalf: Send + Sync + Sized + 'static {
     &mut self, buf: &mut [u8],
   ) -> impl Future<Output = Result<usize>> + Send;
 
+  /// Attempts to peek at pending data without consuming it, without
+  /// yielding.
+  ///
+  /// Unlike [`peek`](Self::peek), this polls the underlying socket
+  /// once and reports readiness through [`Poll`] instead of waiting.
+  ///
+  /// # Returns
+  ///
+  /// - `Poll::Ready(Ok(n))` with `n > 0` — `n` bytes were peeked into
+  ///   `buf` without being consumed.
+  /// - `Poll::Ready(Ok(0))` — the peer has closed the read half (EOF).
+  /// - `Poll::Ready(Err(e))` — a fatal error occurred.
+  /// - `Poll::Pending` — the stream is open but no data is available
+  ///   right now.
+  fn poll_peek(
+    &mut self, cx: &mut Context<'_>, buf: &mut [u8],
+  ) -> Poll<Result<usize>>;
+
   /// Waits for the read half to become ready for the given [`Interest`].
   ///
   /// **Note**: this method yields until ready. For a non-blocking probe,
@@ -231,20 +249,20 @@ pub enum StreamState {
   Broken,
 }
 
-/// Checks the state of a [`Stream`] without blocking or consuming data.
+/// Checks the state of a stream without blocking or consuming data.
 ///
-/// Wraps [`peek`](Stream::peek) in a zero-duration
-/// [`timeout`](tokio::time::timeout) so the call returns immediately
-/// rather than yielding. The write direction is probed via
-/// [`try_write`](Stream::try_write).
+/// Probes the read direction with a single non-blocking
+/// [`poll_peek`](ReadHalf::poll_peek): a [`Poll::Pending`] result means
+/// the stream is open but idle. The write direction is probed via
+/// [`try_write`](WriteHalf::try_write).
 ///
 /// # Examples
 ///
 /// ```rust,ignore
-/// use network::stream::{check_state, StreamState};
+/// use network::stream::{check_state, ReadHalf, StreamState, WriteHalf};
 ///
-/// # async fn example(stream: &mut impl network::stream::Stream) {
-/// match check_state(stream).await {
+/// # async fn example(read: &mut impl ReadHalf, write: &mut impl WriteHalf) {
+/// match check_state(read, write).await {
 ///   StreamState::Open => println!("stream is healthy"),
 ///   StreamState::PeerClosed => {
 ///     println!("peer closed their end")
@@ -258,8 +276,6 @@ where
   R: ReadHalf,
   W: WriteHalf,
 {
-  // Probe write direction with an empty buffer — detects broken pipe
-  // without consuming send-buffer space.
   match write.try_write(&[]) {
     Err(e)
       if e.kind() == ErrorKind::BrokenPipe
@@ -271,17 +287,14 @@ where
     _ => {},
   }
 
-  // Peek with zero-duration timeout: if the socket is idle the
-  // timeout fires immediately with `Elapsed`, meaning the stream is
-  // open but has no data pending.  `peek` does not consume data.
   let mut buf = [0u8; 1];
-  match tokio::time::timeout(Duration::ZERO, read.peek(&mut buf)).await {
+  let mut cx = Context::from_waker(Waker::noop());
+  match read.poll_peek(&mut cx, &mut buf) {
     // Peek completed — check the result.
-    Ok(Ok(0)) => StreamState::PeerClosed,
-    Ok(Ok(_)) => StreamState::Open,
-    Ok(Err(_)) => StreamState::Broken,
-    // Timeout elapsed before peek could complete — stream is open
-    // but idle (no data available yet).
-    Err(_elapsed) => StreamState::Open,
+    Poll::Ready(Ok(0)) => StreamState::PeerClosed,
+    Poll::Ready(Ok(_)) => StreamState::Open,
+    Poll::Ready(Err(_)) => StreamState::Broken,
+    // No data ready — stream is open but idle.
+    Poll::Pending => StreamState::Open,
   }
 }

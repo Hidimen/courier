@@ -1,3 +1,5 @@
+use chrono::DateTime;
+
 use crate::Record;
 
 /// Formats log records before they are dispatched to flows.
@@ -36,6 +38,40 @@ where
 {
   fn format(&self, record: Record) -> Record {
     (self)(record)
+  }
+}
+
+/// A default formatter that produces a `[timestamp][LEVEL] message` layout.
+///
+/// # Example
+///
+/// ```rust
+/// use logger::{DefaultFormatter, Format, Level, Record};
+///
+/// let formatter = DefaultFormatter;
+/// let record = Record::new("hello".into(), Level::Info, "my_ns");
+/// let result = formatter.format(record);
+///
+/// let output = String::from_utf8_lossy(&result.content);
+/// assert!(output.starts_with('['));
+/// assert!(output.contains("][INFO] hello"));
+/// ```
+pub struct DefaultFormatter;
+
+impl Format for DefaultFormatter {
+  fn format(&self, mut record: Record) -> Record {
+    let raw = unsafe { String::from_utf8_unchecked(record.content.into()) };
+    let new = format!(
+      "[{}][{}][{}] {}",
+      DateTime::from_timestamp(record.timestamp, 0)
+        .unwrap()
+        .format("%Y-%m-%d %H:%M:%S"),
+      record.level,
+      record.namespace,
+      raw
+    );
+    record.content = new.into();
+    record
   }
 }
 

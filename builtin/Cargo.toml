@@ -1,0 +1,13 @@
+[package]
+name = "builtin"
+description = "Builtins for project"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[features]
+builtin_echo = ["dep:builtin_echo"]
+
+[dependencies]
+builtin_echo = { path = "../builtins/echo", optional = true }

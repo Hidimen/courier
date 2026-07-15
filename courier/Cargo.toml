@@ -9,9 +9,22 @@ license.workspace = true
 [lib]
 doc = false
 
+[features]
+default = []
+builtin_echo = ["builtin/builtin_echo", "waybill/builtin_echo"]
+
 [dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread"] }
+
+# courier_core
 depot = { path = "../courier_core/depot" }
 logger = { path = "../courier_core/logger" }
 network = { path = "../courier_core/network" }
 relay = { path = "../courier_core/relay" }
 protocol = { path = "../courier_core/protocol" }
+
+# waybill
+waybill = { path = "../waybill" }
+
+# builtin
+builtin = { path = "../builtin" }

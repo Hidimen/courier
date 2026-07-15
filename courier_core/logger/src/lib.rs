@@ -7,7 +7,7 @@
 //!
 //! Log records pass through a user-configurable [`Format`] step before being
 //! dispatched to the registered flows. The default formatter
-//! ([`DefaultFormatter`]) produces a `[timestamp][LEVEL] message` layout.
+//! ([`DefaultFormatter`]) produces a `[timestamp][LEVEL][namespace] message` layout.
 //!
 //! # Architecture
 //!
@@ -52,10 +52,10 @@ mod record;
 #[macro_use]
 pub mod macros;
 
-pub use builder::{Builder, DefaultFormatter, Empty, NonEmpty};
+pub use builder::{Builder, Empty, NonEmpty};
 pub use error::HandlingKind;
 pub use flow::Flow;
-pub use format::Format;
+pub use format::{DefaultFormatter, Format};
 pub use level::Level;
 pub use logger::Logger;
 pub use record::Record;

@@ -1,30 +1,26 @@
-use std::error::Error;
-
 use thiserror::Error;
 use tokio::task::JoinError;
 
 /// Errors that can occur while running a [`Depot`](crate::Depot).
-///
-/// `E` is the error type of the pipeline's middleware chain.
 #[derive(Debug, Error)]
-pub enum DepotError<E: Error + Send + Sync + 'static> {
+pub enum DepotError {
   /// An I/O error from the underlying transport.
   #[error("Io error occurred: {0}")]
-  Io(#[source] std::io::Error),
+  Io(
+    #[source]
+    #[from]
+    std::io::Error,
+  ),
 
-  /// An error returned by protocol or middlewares.
-  #[error("Middleware error: {0}")]
-  Process(#[source] E),
+  /// An execution error emitted by protocol or middlewares.
+  ///
+  /// **Note**: It contains nothing and serves as a placeholder.
+  #[error("Execution error occurred")]
+  Execution,
 
   /// A spawned task terminated unexpectedly.
   #[error("Task terminated: {0}")]
   TaskTerminated(JoinError),
-}
-
-impl<E: Error + Send + Sync + 'static> From<std::io::Error> for DepotError<E> {
-  fn from(err: std::io::Error) -> Self {
-    DepotError::Io(err)
-  }
 }
 
 /// Errors that can occur while building a [`Depot`](crate::Depot) via

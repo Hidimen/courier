@@ -1,65 +1,68 @@
-use std::error::Error;
+use std::{convert::Infallible, error::Error, marker::PhantomData};
 
-use crate::Middleware;
+use crate::{Layer, Middleware};
 
-/// A middleware wrapper that transforms the response of an inner
-/// middleware using a closure.
+/// A middleware that transforms a request with a pure closure.
 ///
-/// Created via
-/// [`PipelineBuilder::then`](crate::PipelineBuilder::then). Converts
-/// `M::Response` into `B`, enabling the next middleware in the chain to
-/// accept a different request type.
+/// `Then<F, E>` applies `F` to the incoming request and returns the
+/// result. The transformation never errors — `E` is a phantom type
+/// parameter that the builder sets to match the preceding middleware's
+/// error type, so that [`Chain`](crate::Chain) composition always
+/// type-checks.
 ///
-/// # Examples
-///
-/// ```rust,ignore
-/// use relay::PipelineBuilder;
-///
-/// let pipeline = PipelineBuilder::new()
-///   .middleware(parse_int)          // Response = i32
-///   .then(|n: i32| n.to_string())   // Response = String
-///   .chain(process_string)          // Request = String
-///   .build();
-/// ```
-pub struct Then<M, F> {
-  pub(crate) inner: M,
-  pub(crate) f: F,
-}
+/// | Created via | `E` |
+/// |---|---|
+/// | [`PipelineBuilder::then`](crate::PipelineBuilder::then) on
+/// [`Empty`](crate::Empty) | [`Infallible`] |
+/// | [`PipelineBuilder::then`](crate::PipelineBuilder::then) on
+/// [`NonEmpty`](crate::NonEmpty) | `M::Error` |
+pub struct Then<F, E = Infallible>(pub(crate) F, pub(crate) PhantomData<E>);
 
-impl<Req, M, F, B> Middleware<Req> for Then<M, F>
-where
-  Req: Send + 'static,
-  M: Middleware<Req>,
-  F: Fn(M::Response) -> B + Send + Sync + 'static,
-  B: Send + 'static,
-{
-  type Response = B;
-  type Error = M::Error;
-
-  async fn handle(&self, req: Req) -> Result<Self::Response, Self::Error> {
-    let resp = self.inner.handle(req).await?;
-    Ok((self.f)(resp))
+impl<F> Then<F> {
+  /// Creates a new [`Then`] with [`Infallible`] as the error type.
+  pub fn new(f: F) -> Self {
+    Then(f, PhantomData)
   }
 }
 
-/// A middleware wrapper that transforms the error of an inner middleware
-/// using a closure.
-///
-/// Created via
-/// [`PipelineBuilder::map_err`](crate::PipelineBuilder::map_err).
-/// Converts `M::Error` into `E2`, enabling the error type to be unified
-/// across middleware boundaries.
-///
-/// # Examples
-///
-/// ```rust,ignore
-/// use relay::PipelineBuilder;
-///
-/// let pipeline = PipelineBuilder::new()
-///   .middleware(my_service)           // Error = MyError
-///   .map_err(|e| Box::new(e))         // Error = Box<dyn Error>
-///   .build();
-/// ```
+impl<Req, F, B, E> Middleware<Req> for Then<F, E>
+where
+  Req: Send + 'static,
+  F: Fn(Req) -> B + Send + Sync + 'static,
+  B: Send + 'static,
+  E: Error + Send + Sync + 'static,
+{
+  type Response = B;
+  type Error = E;
+
+  async fn handle(&self, req: Req) -> Result<Self::Response, Self::Error> {
+    Ok((self.0)(req))
+  }
+}
+
+// ── MapErr ─────────────────────────────────────────────────────────
+
+/// A [`Layer`] that transforms the error type of the inner middleware.
+pub struct MapErrLayer<F> {
+  pub(crate) f: F,
+}
+
+impl<F> MapErrLayer<F> {
+  /// Creates a new [`MapErrLayer`] with the given error-mapping closure.
+  pub fn new(f: F) -> Self {
+    MapErrLayer { f }
+  }
+}
+
+impl<Inner, F> Layer<Inner> for MapErrLayer<F> {
+  type Output = MapErr<Inner, F>;
+
+  fn layer(self, inner: Inner) -> Self::Output {
+    MapErr { inner, f: self.f }
+  }
+}
+
+/// Middleware produced by [`MapErrLayer`].
 pub struct MapErr<M, F> {
   pub(crate) inner: M,
   pub(crate) f: F,

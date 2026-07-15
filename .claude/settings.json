@@ -15,5 +15,11 @@
         ]
       }
     ]
+  },
+  "enabledMcpjsonServers": [
+    "codegraph"
+  ],
+  "env": {
+    "DISABLE_AUTOUPDATER": "1"
   }
 }

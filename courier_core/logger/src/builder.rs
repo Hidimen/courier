@@ -1,44 +1,9 @@
 use std::{marker::PhantomData, sync::Arc};
 
-use chrono::DateTime;
-
 use crate::{
-  Format, Logger, Record,
+  DefaultFormatter, Format, Logger,
   flow::{Flow, Identity, Stack},
 };
-
-/// A default formatter that produces a `[timestamp][LEVEL] message` layout.
-///
-/// # Example
-///
-/// ```rust
-/// use logger::{DefaultFormatter, Format, Level, Record};
-///
-/// let formatter = DefaultFormatter;
-/// let record = Record::new("hello".into(), Level::Info, "my_ns");
-/// let result = formatter.format(record);
-///
-/// let output = String::from_utf8_lossy(&result.content);
-/// assert!(output.starts_with('['));
-/// assert!(output.contains("][INFO] hello"));
-/// ```
-pub struct DefaultFormatter;
-
-impl Format for DefaultFormatter {
-  fn format(&self, mut record: Record) -> Record {
-    let raw = unsafe { String::from_utf8_unchecked(record.content.into()) };
-    let new = format!(
-      "[{}][{}] {}",
-      DateTime::from_timestamp(record.timestamp, 0)
-        .unwrap()
-        .format("%Y-%m-%d %H:%M:%S"),
-      record.level,
-      raw
-    );
-    record.content = new.into();
-    record
-  }
-}
 
 #[doc(hidden)]
 pub struct Empty;

@@ -99,7 +99,6 @@ impl Type for A {
 
 - Rust edition 2024, minimum rustc 1.91.
 - Workspace resolver v3.
-- Git user: `SuiBian9516`, branch: `master`.
 - Tabs: 2 spaces, no hard tabs, max 80 columns.
 
 <!-- CODEGRAPH_START -->

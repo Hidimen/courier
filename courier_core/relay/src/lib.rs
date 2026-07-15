@@ -6,25 +6,25 @@
 //!
 //! # Composition model
 //!
-//! Two patterns are supported:
+//! Three patterns are supported:
 //!
 //! - **Sequential chain** (via
-//!   [`PipelineBuilder::middleware`](PipelineBuilder::middleware)): FIFO
-//!   composition where each middleware's response feeds the next. Data
-//!   dependency — producer runs before consumer.
+//!   [`PipelineBuilder::middleware`](PipelineBuilder::middleware)):
+//!   FIFO composition wrapped in [`Chain`].
+//! - **Response transform** (via
+//!   [`PipelineBuilder::then`](PipelineBuilder::then)): appends a
+//!   [`Then`] middleware via [`Chain`] to map the response.
 //! - **Wrapping layer** (via
 //!   [`PipelineBuilder::layer`](PipelineBuilder::layer)): LIFO
-//!   composition where each layer wraps the inner chain. Control
-//!   dependency — wrapper runs before inner, and may short-circuit.
+//!   composition where each layer wraps the inner chain.
 //!
 //! # Quick start
 //!
 //! ```rust,ignore
 //! use relay::{Layer, Middleware, PipelineBuilder};
 //!
-//! // A leaf middleware — always processes, no inner
 //! struct Handler;
-//! impl<Req> Middleware<Req> for Handler {
+//! impl<Req: Send> Middleware<Req> for Handler {
 //!   type Response = Req;
 //!   type Error = std::convert::Infallible;
 //!   async fn handle(&self, req: Req) -> Result<Req, Self::Error> {
@@ -32,7 +32,6 @@
 //!   }
 //! }
 //!
-//! // Build a pipeline
 //! let pipeline = PipelineBuilder::new()
 //!   .middleware(Handler)
 //!   .build();
@@ -49,7 +48,7 @@ pub use chain::Chain;
 pub use layer::Layer;
 pub use middleware::Middleware;
 pub use pipeline::Pipeline;
-pub use wrappers::{MapErr, Then};
+pub use wrappers::{MapErr, MapErrLayer, Then};
 
 #[cfg(test)]
 mod tests {
@@ -163,7 +162,6 @@ mod tests {
 
     let result = chain.handle("test".into()).await;
     assert_eq!(result.unwrap(), "test");
-    // Both must have been called exactly once
     assert_eq!(c1.get(), 1);
     assert_eq!(c2.get(), 1);
   }
@@ -171,8 +169,6 @@ mod tests {
   /// Verify Chain passes Left's response to Right (data flow).
   #[tokio::test]
   async fn chain_data_flow() {
-    // Left = Suffix{, "!"}, Right = Prefix{inner: leaf, prefix: "A_"}
-    // "test" → Suffix → "test!" → Prefix → "A_test!"
     let leaf = Suffix { suffix: "" };
     let left = Suffix { suffix: "!" };
     let right = Prefix { inner: leaf, prefix: "A_" };
@@ -199,7 +195,6 @@ mod tests {
   /// Verify when Left errors, Right is never called.
   #[tokio::test]
   async fn chain_left_error_skips_right() {
-    /// Middleware that always errors.
     struct AlwaysErr;
     impl Middleware<String> for AlwaysErr {
       type Response = String;
@@ -216,7 +211,7 @@ mod tests {
 
     let result = chain.handle("test".into()).await;
     assert!(result.is_err());
-    assert_eq!(c2.get(), 0); // Right never called
+    assert_eq!(c2.get(), 0);
   }
 
   // ------------------------------------------------------------------
@@ -238,7 +233,7 @@ mod tests {
 
     async fn handle(&self, req: String) -> Result<Self::Response, Self::Error> {
       if !self.allow {
-        return Ok("blocked".into()); // Short-circuit
+        return Ok("blocked".into());
       }
       self.inner.handle(req).await
     }
@@ -269,7 +264,7 @@ mod tests {
 
     let result = pipeline.handle("test".into()).await;
     assert_eq!(result.unwrap(), "blocked");
-    assert_eq!(counter.get(), 0); // Inner never called
+    assert_eq!(counter.get(), 0);
   }
 
   /// Verify when allow=true, Gate calls inner.
@@ -338,8 +333,8 @@ mod tests {
     let pipeline = PipelineBuilder::new()
       .middleware(c_first.clone())
       .middleware(c_second.clone())
-      .layer(GateLayer { allow: true }) // inner layer, passes
-      .layer(GateLayer { allow: false }) // outer layer, blocks
+      .layer(GateLayer { allow: true })
+      .layer(GateLayer { allow: false })
       .build();
 
     let result = pipeline.handle("test".into()).await;
@@ -349,10 +344,10 @@ mod tests {
   }
 
   // ------------------------------------------------------------------
-  // Then / MapErr tests
+  // Then tests (response transformation via Chain)
   // ------------------------------------------------------------------
 
-  /// Verify `.then()` transforms the response type.
+  /// Verify `.then()` transforms the response type via Chain.
   #[tokio::test]
   async fn then_transforms_response() {
     /// Middleware that returns a number.
@@ -373,6 +368,53 @@ mod tests {
     let result: Result<String, TestError> = pipeline.handle(()).await;
     assert_eq!(result.unwrap(), "42");
   }
+
+  /// Verify `.then()` in Empty state creates a standalone Then.
+  #[tokio::test]
+  async fn empty_state_then_standalone() {
+    let pipeline = PipelineBuilder::new().then(|n: i32| n.to_string()).build();
+
+    let result: Result<String, std::convert::Infallible> =
+      pipeline.handle(42).await;
+    assert_eq!(result.unwrap(), "42");
+  }
+
+  /// Verify `.then()` after middleware, then more middleware.
+  #[tokio::test]
+  async fn then_between_middlewares() {
+    struct ParseNum;
+    impl Middleware<()> for ParseNum {
+      type Response = i32;
+      type Error = TestError;
+      async fn handle(&self, _req: ()) -> Result<Self::Response, Self::Error> {
+        Ok(42)
+      }
+    }
+
+    struct HandleString;
+    impl Middleware<String> for HandleString {
+      type Response = String;
+      type Error = TestError;
+      async fn handle(
+        &self, req: String,
+      ) -> Result<Self::Response, Self::Error> {
+        Ok(format!("handled: {req}"))
+      }
+    }
+
+    let pipeline = PipelineBuilder::new()
+      .middleware(ParseNum)
+      .then(|n: i32| n.to_string())
+      .middleware(HandleString)
+      .build();
+
+    let result: Result<String, TestError> = pipeline.handle(()).await;
+    assert_eq!(result.unwrap(), "handled: 42");
+  }
+
+  // ------------------------------------------------------------------
+  // MapErr tests (error transformation via Layer)
+  // ------------------------------------------------------------------
 
   /// Verify `.map_err()` transforms the error type.
   #[tokio::test]
@@ -408,6 +450,32 @@ mod tests {
       result.unwrap_err(),
       WrappedError("wrapped: inner error".into())
     );
+  }
+
+  /// Verify map_err + layer + then compose correctly.
+  #[tokio::test]
+  async fn map_err_layer_then_composition() {
+    struct Echo;
+    impl Middleware<String> for Echo {
+      type Response = String;
+      type Error = TestError;
+      async fn handle(
+        &self, req: String,
+      ) -> Result<Self::Response, Self::Error> {
+        Ok(req)
+      }
+    }
+
+    let pipeline = PipelineBuilder::new()
+      .middleware(Echo)
+      .then(|s: String| format!("[{s}]"))
+      .map_err(|e: TestError| TestError(format!("wrapped: {e}")))
+      .layer(GateLayer { allow: true })
+      .build();
+
+    let result: Result<String, TestError> =
+      pipeline.handle("hello".into()).await;
+    assert_eq!(result.unwrap(), "[hello]");
   }
 
   // ------------------------------------------------------------------
@@ -450,7 +518,6 @@ mod tests {
     let c2 = Counter::new();
     let c3 = Counter::new();
 
-    // .middleware(c1).middleware(c2).middleware(c3)
     let pipeline = PipelineBuilder::new()
       .middleware(c1.clone())
       .middleware(c2.clone())
@@ -467,7 +534,6 @@ mod tests {
   /// Verify chain error propagation: Right::Error: Into<Left::Error>.
   #[tokio::test]
   async fn chain_error_conversion() {
-    /// Middleware whose error is TestError.
     struct LeftMw;
     impl Middleware<String> for LeftMw {
       type Response = String;
@@ -479,7 +545,6 @@ mod tests {
       }
     }
 
-    /// Middleware whose error is also TestError.
     struct RightMw;
     impl Middleware<String> for RightMw {
       type Response = String;
@@ -494,7 +559,6 @@ mod tests {
     let chain = Chain(LeftMw, RightMw);
     let result = chain.handle("test".into()).await;
     assert!(result.is_err());
-    // Right's error is converted via Into into Left's error (TestError)
     assert_eq!(result.unwrap_err(), TestError("right failed".into()));
   }
 }

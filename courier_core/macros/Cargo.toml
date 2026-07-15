@@ -1,0 +1,15 @@
+[package]
+name = "macros"
+description = "Procedural macros for project"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn = "2.0.119"
+proc-macro2 = "1.0.106"
+quote = "1.0.46"
