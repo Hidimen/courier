@@ -1,0 +1,17 @@
+[package]
+name = "test_boot"
+description = "Echo builtins"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[package.metadata.carrier]
+kind = "bootloader"
+courier_version = "latest"
+entry = "test_boot::boot"
+
+[lib]
+doc = false
+
+[dependencies]

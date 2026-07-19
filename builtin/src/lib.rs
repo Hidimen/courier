@@ -1,3 +1,2 @@
-#[cfg(feature = "builtin_echo")]
-#[doc(inline)]
-pub use builtin_echo;
+// Re-exports for builtin modules — @generated
+include!("generated.rs");

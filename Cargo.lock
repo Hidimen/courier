@@ -72,6 +72,7 @@ name = "builtin"
 version = "0.1.0"
 dependencies = [
  "builtin_echo",
+ "test_boot",
 ]
 
 [[package]]
@@ -494,6 +495,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "test_boot"
+version = "0.1.0"
+
+[[package]]
 name = "thiserror"
 version = "2.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -606,7 +611,7 @@ dependencies = [
 name = "waybill"
 version = "0.1.0"
 dependencies = [
- "builtin_echo",
+ "builtin",
  "clap",
 ]
 
