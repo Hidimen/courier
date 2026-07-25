@@ -391,9 +391,9 @@ mod tests {
     let result = formatter.format(record);
 
     let output = String::from_utf8(result.content.to_vec()).unwrap();
-    // Format: [YYYY-MM-DD HH:MM:SS][INFO] test msg
+    // Format: [YYYY-MM-DD HH:MM:SS][INFO][test] test msg
     assert!(output.starts_with('['));
-    assert!(output.contains("][INFO] test msg"));
+    assert!(output.contains("][INFO][test] test msg"));
     // Verify timestamp part parses correctly
     let ts_end = output.find(']').unwrap();
     let _ts_str = &output[1..ts_end];

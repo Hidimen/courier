@@ -4,8 +4,6 @@
 enum BootloaderList {
     #[cfg(feature = "builtin_echo")]
     BuiltinEcho,
-    #[cfg(feature = "test_boot")]
-    TestBoot,
 }
 
 impl StartArgs {
@@ -13,8 +11,6 @@ impl StartArgs {
         match self.bootloader {
             #[cfg(feature = "builtin_echo")]
             BootloaderList::BuiltinEcho => builtin::builtin_echo::boot().await,
-            #[cfg(feature = "test_boot")]
-            BootloaderList::TestBoot => builtin::test_boot::boot().await,
         }
     }
 }

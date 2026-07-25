@@ -14,3 +14,4 @@ network = { path = "../network" }
 relay = { path = "../relay" }
 protocol = { path = "../protocol" }
 logger = { path = "../logger" }
+event = { path = "../event" }

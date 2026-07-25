@@ -54,7 +54,7 @@ where
 ///
 /// let output = String::from_utf8_lossy(&result.content);
 /// assert!(output.starts_with('['));
-/// assert!(output.contains("][INFO] hello"));
+/// assert!(output.contains("][INFO][my_ns] hello"));
 /// ```
 pub struct DefaultFormatter;
 

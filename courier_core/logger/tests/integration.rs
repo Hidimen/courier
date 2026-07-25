@@ -215,7 +215,7 @@ fn test_global_install_and_macros() {
   // Test get_instance() works
   let instance = Logger::get_instance();
 
-  // Test all macros (they use get_instance() internally)
+  // Test all macros at each level (positional namespace, static)
   logger::trace!("test", "trace from macro");
   logger::debug!("test", "debug from macro");
   logger::info!("test", "info from macro");
@@ -223,22 +223,59 @@ fn test_global_install_and_macros() {
   logger::error!("test", "error from macro");
   logger::fatal!("test", "fatal from macro");
 
-  // Test template macros
+  // Test single-arg macros (default ns = env!("CARGO_PKG_NAME"))
+  let formatted_val = "formatted";
+  logger::info!("single arg static");
+  logger::info!("single arg: {}", formatted_val);
+
+  // Test positional template macros
   logger::info!("test", "template: {}", "hello");
-  logger::info!(target = "mock", "test", "targeted: {}", 42);
+  logger::info!("test", "named: {name}", name = "world");
+  logger::info!("test", "expr: {}", 1 + 2 * 3);
+
+  // Test named namespace macros
+  logger::info!(namespace = "test", "bare static");
+  logger::info!(namespace = "test", "named fmt: {}", 42);
+
+  // Test target macros (default ns)
+  logger::warn!(target = "mock", "targeted static");
+  logger::warn!(target = "mock", "targeted fmt: {}", 42);
+  // Test target macros (named ns)
+  logger::info!(target = "mock", namespace = "test", "targeted: {}", 42);
+  logger::error!(
+    target = "mock",
+    namespace = "test",
+    "targeted fmt: {:.1}",
+    2.8
+  );
+  logger::info!(target = "mock", namespace = "ns", "target + named ns");
 
   std::thread::sleep(std::time::Duration::from_millis(200));
 
   let logs = output.lock().unwrap();
-  assert_eq!(logs.len(), 8);
+  assert_eq!(logs.len(), 18);
   assert!(logs.iter().any(|m| m.contains("trace from macro")));
   assert!(logs.iter().any(|m| m.contains("debug from macro")));
   assert!(logs.iter().any(|m| m.contains("info from macro")));
   assert!(logs.iter().any(|m| m.contains("warn from macro")));
   assert!(logs.iter().any(|m| m.contains("error from macro")));
   assert!(logs.iter().any(|m| m.contains("fatal from macro")));
+  // single-arg
+  assert!(logs.iter().any(|m| m.contains("single arg static")));
+  assert!(logs.iter().any(|m| m.contains("single arg: formatted")));
+  // positional template
   assert!(logs.iter().any(|m| m.contains("template: hello")));
+  assert!(logs.iter().any(|m| m.contains("named: world")));
+  assert!(logs.iter().any(|m| m.contains("expr: 7")));
+  // named namespace
+  assert!(logs.iter().any(|m| m.contains("bare static")));
+  assert!(logs.iter().any(|m| m.contains("named fmt: 42")));
+  // target
   assert!(logs.iter().any(|m| m.contains("targeted: 42")));
+  assert!(logs.iter().any(|m| m.contains("targeted static")));
+  assert!(logs.iter().any(|m| m.contains("targeted fmt: 42")));
+  assert!(logs.iter().any(|m| m.contains("targeted fmt: 3.1")));
+  assert!(logs.iter().any(|m| m.contains("target + named ns")));
 
   // Clean up
   drop(instance);

@@ -59,15 +59,18 @@ pub async fn boot() {
   let transport = TcpTransport::bind("0.0.0.0:8080").unwrap();
   let protocol = EchoProtocol;
   let logger = logger::Logger::default().install();
+  let event_bus = event::EventBus::new(1024).install();
 
-  info!("main", "Server is running on port 8080.");
+  info!("Server is running on port 8080.");
 
   let mut server = DepotBuilder::default()
     .logger(logger)
     .pipeline(pipeline)
     .transport(transport)
     .protocol(protocol)
+    .event_bus(event_bus)
     .build()
     .unwrap();
+
   let _ = server.run_stream().await;
 }

@@ -1,12 +1,15 @@
 [package]
-name = "logger"
+name = "event"
 description.workspace = true
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros"] }
+
 [dependencies]
 crossbeam-channel.workspace = true
-chrono = "0.4.45"
-bytes = "1.11.1"
+thiserror.workspace = true
+dashmap = "6.2.1"

@@ -15,9 +15,11 @@ doc = false
 
 [dependencies]
 thiserror = "2.0.18"
+tokio = { workspace = true, features = ["rt"] }
 
 depot = { path = "../../courier_core/depot" }
 relay = { path = "../../courier_core/relay" }
 network = { path = "../../courier_core/network" }
 logger = { path = "../../courier_core/logger" }
 protocol = { path = "../../courier_core/protocol" }
+event = { path = "../../courier_core/event" }

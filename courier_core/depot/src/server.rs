@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use event::EventBus;
 use logger::{Logger, error, warn};
 use network::{
   KeepAlive,
@@ -30,6 +31,7 @@ pub struct Depot<T, P, M> {
   protocol: Arc<P>,
   pipeline: Arc<Pipeline<M>>,
   logger: Arc<Logger>,
+  event_bus: Arc<EventBus>,
 }
 
 impl<T, P, M> Depot<T, P, M> {
@@ -37,12 +39,14 @@ impl<T, P, M> Depot<T, P, M> {
   /// pipeline.
   pub fn new(
     transport: T, protocol: P, pipeline: Pipeline<M>, logger: Arc<Logger>,
+    event_bus: Arc<EventBus>,
   ) -> Self {
     Self {
       transport,
       protocol: Arc::new(protocol),
       pipeline: Arc::new(pipeline),
       logger,
+      event_bus,
     }
   }
 
@@ -56,8 +60,14 @@ impl<T, P, M> Depot<T, P, M> {
     &self.pipeline
   }
 
+  /// Returns a cloned logger.
   pub fn logger(&self) -> Arc<Logger> {
     self.logger.clone()
+  }
+
+  /// Returns a cloned event_bus.
+  pub fn event_bus(&self) -> Arc<EventBus> {
+    self.event_bus.clone()
   }
 }
 

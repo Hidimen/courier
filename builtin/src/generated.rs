@@ -3,7 +3,3 @@
 #[cfg(feature = "builtin_echo")]
 #[doc(inline)]
 pub use builtin_echo;
-
-#[cfg(feature = "test_boot")]
-#[doc(inline)]
-pub use test_boot;

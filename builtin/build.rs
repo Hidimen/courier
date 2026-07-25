@@ -4,7 +4,8 @@ use std::process::Command;
 fn main() {
   let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
   let builtins_dir = manifest_dir.parent().unwrap().join("builtins");
-  let script = manifest_dir.parent().unwrap().join("build").join("build_tool.py");
+  let script =
+    manifest_dir.parent().unwrap().join("build").join("build_tool.py");
 
   println!("cargo:rerun-if-changed={}", builtins_dir.display());
   println!("cargo:rerun-if-changed={}", script.display());

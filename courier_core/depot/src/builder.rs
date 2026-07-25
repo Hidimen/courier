@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use event::EventBus;
 use logger::Logger;
 use network::transport::Transport;
 use relay::Pipeline;
@@ -37,6 +38,7 @@ pub struct DepotBuilder<T = (), P = (), M = ()> {
   protocol: Option<P>,
   pipeline: Option<Pipeline<M>>,
   logger: Option<Arc<Logger>>,
+  event_bus: Option<Arc<EventBus>>,
 }
 
 impl DepotBuilder {
@@ -50,7 +52,13 @@ impl DepotBuilder {
   /// let builder = DepotBuilder::new();
   /// ```
   pub fn new() -> Self {
-    Self { transport: None, protocol: None, pipeline: None, logger: None }
+    Self {
+      transport: None,
+      protocol: None,
+      pipeline: None,
+      logger: None,
+      event_bus: None,
+    }
   }
 }
 
@@ -79,6 +87,7 @@ impl<T: Transport, P, M> DepotBuilder<T, P, M> {
       protocol: Some(protocol),
       pipeline: self.pipeline,
       logger: self.logger,
+      event_bus: self.event_bus,
     }
   }
 }
@@ -101,6 +110,7 @@ impl<T, P, M> DepotBuilder<T, P, M> {
       protocol: self.protocol,
       pipeline: self.pipeline,
       logger: self.logger,
+      event_bus: self.event_bus,
     }
   }
 
@@ -121,6 +131,7 @@ impl<T, P, M> DepotBuilder<T, P, M> {
       protocol: self.protocol,
       pipeline: Some(pipeline),
       logger: self.logger,
+      event_bus: self.event_bus,
     }
   }
 
@@ -136,6 +147,21 @@ impl<T, P, M> DepotBuilder<T, P, M> {
   /// ```
   pub fn logger(mut self, logger: Arc<Logger>) -> Self {
     self.logger = Some(logger);
+    self
+  }
+
+  /// Sets the event_bus for the [`Depot`].
+  ///
+  /// # Examples
+  ///
+  /// ```rust,ignore
+  /// use depot::DepotBuilder;
+  ///
+  /// let builder = DepotBuilder::new()
+  ///     .event_bus(my_event_bus);
+  /// ```
+  pub fn event_bus(mut self, event_bus: Arc<EventBus>) -> Self {
+    self.event_bus = Some(event_bus);
     self
   }
 
@@ -165,6 +191,7 @@ impl<T, P, M> DepotBuilder<T, P, M> {
       self.protocol.ok_or(DepotBuildError::MissingProtocol)?,
       self.pipeline.ok_or(DepotBuildError::MissingPipeline)?,
       self.logger.ok_or(DepotBuildError::MissingLogger)?,
+      self.event_bus.ok_or(DepotBuildError::MissingEventBus)?,
     ))
   }
 }

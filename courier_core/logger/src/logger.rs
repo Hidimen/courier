@@ -7,7 +7,7 @@ use std::{
   time::Duration,
 };
 
-use crossbeam::channel::{RecvTimeoutError, Sender, bounded};
+use crossbeam_channel::{RecvTimeoutError, Sender, bounded};
 
 use crate::{Format, HandlingKind, Level, Record, flow::Flow};
 
@@ -91,7 +91,7 @@ impl Logger {
     let signal_cloned = signal.clone();
 
     let handle = std::thread::Builder::new()
-      .name("logger".into())
+      .name("courier:logger".into())
       .stack_size(3 * 1024 * 1024)
       .spawn(move || {
         let mut flows = flows;
@@ -517,5 +517,31 @@ mod tests {
 
     let logs = output.lock().unwrap();
     assert_eq!(logs.len(), 1);
+  }
+
+  #[test]
+  fn logger_format_variants() {
+    let output = Arc::new(Mutex::new(Vec::new()));
+    let flow = MockFlow::new(Level::Trace, output.clone());
+    let logger = Logger::new(128, flow, |r| r);
+
+    // Positional args
+    logger.info(format!("hello {}", "world"), "test");
+    // Named args
+    logger.info(format!("x={x}, y={y}", x = 1, y = 2), "test");
+    // Complex expressions
+    logger.info(format!("result={}", 1 + 2 * 3), "test");
+    // Multiple positional
+    logger.info(format!("a={}, b={}, c={}", 1, "two", 2.8), "test");
+
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    drop(logger);
+
+    let logs = output.lock().unwrap();
+    assert_eq!(logs.len(), 4);
+    assert!(logs[0].contains("hello world"));
+    assert!(logs[1].contains("x=1, y=2"));
+    assert!(logs[2].contains("result=7"));
+    assert!(logs[3].contains("a=1, b=two, c=3.14"));
   }
 }

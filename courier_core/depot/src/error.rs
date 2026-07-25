@@ -45,4 +45,8 @@ pub enum DepotBuildError {
   /// Logger was not set.
   #[error("logger is required but was not set")]
   MissingLogger,
+
+  /// EventBus was not set.
+  #[error("event_bus is required but was not set")]
+  MissingEventBus,
 }

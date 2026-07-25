@@ -17,3 +17,8 @@ license = "Apache-2.0"
 [workspace.dependencies]
 tokio = "1.52.1"
 thiserror = "2.0.18"
+crossbeam-channel = "0.5.15"
+
+syn = "3.0.3"
+proc-macro2 = "1.0.107"
+quote = "1.0.47"
