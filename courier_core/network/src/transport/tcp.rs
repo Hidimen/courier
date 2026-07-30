@@ -15,7 +15,12 @@ pub struct TcpTransport(tokio::net::TcpListener);
 
 impl Transport for TcpTransport {
   fn bind<A: ToSocketAddrs + Send>(addr: A) -> Result<Self> {
-    Ok(Self(tokio::net::TcpListener::from_std(TcpListener::bind(addr)?)?))
+    /*
+      To avoid Tokio panic, set_nonblocking is necessary.
+    */
+    let listener = TcpListener::bind(addr)?;
+    listener.set_nonblocking(true)?;
+    Ok(Self(tokio::net::TcpListener::from_std(listener)?))
   }
 
   fn set_ttl(&self, ttl: u32) -> Result<()> {

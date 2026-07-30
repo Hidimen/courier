@@ -27,6 +27,12 @@ pub struct EventBus {
   subscribers: Arc<DashMap<TypeId, Vec<EventHandler>>>,
 }
 
+impl Default for EventBus {
+  fn default() -> Self {
+    Self::new(1024)
+  }
+}
+
 impl EventBus {
   pub fn new(capacity: usize) -> Self {
     let signal = Arc::new(AtomicBool::new(true));

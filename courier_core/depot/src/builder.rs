@@ -271,6 +271,13 @@ mod tests {
     PipelineBuilder::new().middleware(StubMiddleware).build()
   }
 
+  /// A stub event bus for testing.
+  fn stub_event_bus() -> Arc<EventBus> {
+    use event::EventBus;
+
+    Arc::new(EventBus::default())
+  }
+
   #[test]
   fn build_with_all_fields_succeeds() {
     let depot = DepotBuilder::new()
@@ -278,6 +285,7 @@ mod tests {
       .protocol(StubProtocol)
       .pipeline(stub_pipeline())
       .logger(stub_logger())
+      .event_bus(stub_event_bus())
       .build();
 
     assert!(depot.is_ok());
@@ -289,6 +297,7 @@ mod tests {
       .transport(StubTransport)
       .pipeline(stub_pipeline())
       .logger(stub_logger())
+      .event_bus(stub_event_bus())
       .build();
 
     match result {
@@ -303,6 +312,7 @@ mod tests {
       .transport(StubTransport)
       .protocol(StubProtocol)
       .logger(stub_logger())
+      .event_bus(stub_event_bus())
       .build();
 
     match result {
@@ -317,10 +327,26 @@ mod tests {
       .transport(StubTransport)
       .protocol(StubProtocol)
       .pipeline(stub_pipeline())
+      .event_bus(stub_event_bus())
       .build();
 
     match result {
       Err(e) => assert!(e.to_string().contains("logger")),
+      Ok(_) => panic!("expected build to fail without logger"),
+    }
+  }
+
+  #[test]
+  fn build_without_event_bus_fails() {
+    let result = DepotBuilder::new()
+      .transport(StubTransport)
+      .protocol(StubProtocol)
+      .logger(stub_logger())
+      .pipeline(stub_pipeline())
+      .build();
+
+    match result {
+      Err(e) => assert!(e.to_string().contains("event_bus")),
       Ok(_) => panic!("expected build to fail without logger"),
     }
   }

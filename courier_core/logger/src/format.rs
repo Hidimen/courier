@@ -1,6 +1,6 @@
 use chrono::DateTime;
 
-use crate::Record;
+use crate::{Level, Record};
 
 /// Formats log records before they are dispatched to flows.
 ///
@@ -41,7 +41,7 @@ where
   }
 }
 
-/// A default formatter that produces a `[timestamp][LEVEL] message` layout.
+/// A default formatter that produces a `[timestamp][LEVEL][NAMESPACE] message` layout.
 ///
 /// # Example
 ///
@@ -70,6 +70,100 @@ impl Format for DefaultFormatter {
       record.namespace,
       raw
     );
+    record.content = new.into();
+    record
+  }
+}
+
+/// A pretty formatter that produces a `timestamp LEVEL NAMESPACE message`
+/// layout with colours.
+///
+/// # Example
+///
+/// ```rust
+/// use logger::{ PrettyFormatter, Format, Level, Record };
+///
+/// let formatter = PrettyFormatter;
+/// let record = Record::new("hello".into(), Level::Info, "my_ns");
+/// let result = formatter.format(record);
+///
+/// let output = String::from_utf8_lossy(&result.content);
+/// assert!(output.contains("\x1b[92m\x1b[1mINFO\x1b[0m my_ns hello"));
+/// ```
+pub struct PrettyFormatter;
+
+impl Format for PrettyFormatter {
+  fn format(&self, mut record: Record) -> Record {
+    let raw = unsafe { String::from_utf8_unchecked(record.content.into()) };
+    let new = match &record.level {
+      Level::Trace => {
+        format!(
+          "{} \x1b[95m\x1b[1m{}\x1b[0m {} {}",
+          DateTime::from_timestamp(record.timestamp, 0)
+            .unwrap()
+            .format("%Y-%m-%d %H:%M:%S"),
+          record.level,
+          record.namespace,
+          raw
+        )
+      },
+      Level::Debug => {
+        format!(
+          "{} \x1b[94m\x1b[1m{}\x1b[0m {} {}",
+          DateTime::from_timestamp(record.timestamp, 0)
+            .unwrap()
+            .format("%Y-%m-%d %H:%M:%S"),
+          record.level,
+          record.namespace,
+          raw
+        )
+      },
+      Level::Info => {
+        format!(
+          "{} \x1b[92m\x1b[1m{}\x1b[0m {} {}",
+          DateTime::from_timestamp(record.timestamp, 0)
+            .unwrap()
+            .format("%Y-%m-%d %H:%M:%S"),
+          record.level,
+          record.namespace,
+          raw
+        )
+      },
+      Level::Warn => {
+        format!(
+          "{} \x1b[93m\x1b[1m{}\x1b[0m {} {}",
+          DateTime::from_timestamp(record.timestamp, 0)
+            .unwrap()
+            .format("%Y-%m-%d %H:%M:%S"),
+          record.level,
+          record.namespace,
+          raw
+        )
+      },
+      Level::Error => {
+        format!(
+          "{} \x1b[31m\x1b[1m{}\x1b[0m {} {}",
+          DateTime::from_timestamp(record.timestamp, 0)
+            .unwrap()
+            .format("%Y-%m-%d %H:%M:%S"),
+          record.level,
+          record.namespace,
+          raw
+        )
+      },
+      Level::Fatal => {
+        format!(
+          "{} \x1b[97m\x1b[41m\x1b[1m{}\x1b[0m {} {}",
+          DateTime::from_timestamp(record.timestamp, 0)
+            .unwrap()
+            .format("%Y-%m-%d %H:%M:%S"),
+          record.level,
+          record.namespace,
+          raw
+        )
+      },
+    };
+
     record.content = new.into();
     record
   }

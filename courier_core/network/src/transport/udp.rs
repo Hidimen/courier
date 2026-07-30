@@ -9,7 +9,12 @@ pub struct UdpTransport(tokio::net::UdpSocket);
 
 impl Transport for UdpTransport {
   fn bind<A: ToSocketAddrs + Send>(addr: A) -> Result<Self> {
-    Ok(Self(tokio::net::UdpSocket::from_std(UdpSocket::bind(addr)?)?))
+    /*
+      To avoid Tokio panic, set_nonblocking is necessary.
+    */
+    let sock = UdpSocket::bind(addr)?;
+    sock.set_nonblocking(true)?;
+    Ok(Self(tokio::net::UdpSocket::from_std(sock)?))
   }
 
   fn set_ttl(&self, ttl: u32) -> Result<()> {

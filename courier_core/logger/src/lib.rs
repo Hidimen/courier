@@ -55,7 +55,7 @@ pub mod macros;
 pub use builder::{Builder, Empty, NonEmpty};
 pub use error::HandlingKind;
 pub use flow::Flow;
-pub use format::{DefaultFormatter, Format};
+pub use format::*;
 pub use level::Level;
 pub use logger::Logger;
 pub use record::Record;

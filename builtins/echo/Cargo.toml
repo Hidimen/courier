@@ -1,5 +1,5 @@
 [package]
-name = "builtin_echo"
+name = "echo"
 description = "Echo builtins"
 version = "0.1.0"
 edition.workspace = true
@@ -8,14 +8,13 @@ license.workspace = true
 
 [package.metadata.carrier]
 kind = "bootloader"
-entry = "builtin_echo::boot"
+entry = "boot"
 
 [lib]
 doc = false
 
 [dependencies]
 thiserror = "2.0.18"
-tokio = { workspace = true, features = ["rt"] }
 
 depot = { path = "../../courier_core/depot" }
 relay = { path = "../../courier_core/relay" }

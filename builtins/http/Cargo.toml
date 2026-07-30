@@ -1,12 +1,13 @@
 [package]
-name = "logger"
-description = "Logger for project"
+name = "http"
+description = "HTTP builtin for project"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
+[package.metadata.carrier]
+kind = "full"
+entry = "boot"
+
 [dependencies]
-crossbeam-channel.workspace = true
-chrono = "0.4.45"
-bytes = "1.11.1"

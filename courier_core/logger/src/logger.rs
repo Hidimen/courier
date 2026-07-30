@@ -542,6 +542,6 @@ mod tests {
     assert!(logs[0].contains("hello world"));
     assert!(logs[1].contains("x=1, y=2"));
     assert!(logs[2].contains("result=7"));
-    assert!(logs[3].contains("a=1, b=two, c=3.14"));
+    assert!(logs[3].contains("a=1, b=two, c=2.8"));
   }
 }

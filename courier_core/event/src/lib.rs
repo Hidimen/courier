@@ -3,6 +3,8 @@ mod event;
 mod event_bus;
 mod event_handler;
 mod subscribe;
+#[macro_use]
+mod macros;
 
 pub use event::Event;
 pub use event_bus::EventBus;

@@ -1,4 +1,10 @@
-/target
-.vscode
-tracking.md
+# AI MCP
 .codegraph
+
+# Build Cache
+/target
+output
+build/__pycache__
+
+# Editor's settings
+.vscode

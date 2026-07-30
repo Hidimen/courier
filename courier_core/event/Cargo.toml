@@ -1,6 +1,6 @@
 [package]
 name = "event"
-description.workspace = true
+description = "Event system for project"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

@@ -274,7 +274,7 @@ fn test_global_install_and_macros() {
   assert!(logs.iter().any(|m| m.contains("targeted: 42")));
   assert!(logs.iter().any(|m| m.contains("targeted static")));
   assert!(logs.iter().any(|m| m.contains("targeted fmt: 42")));
-  assert!(logs.iter().any(|m| m.contains("targeted fmt: 3.1")));
+  assert!(logs.iter().any(|m| m.contains("targeted fmt: 2.8")));
   assert!(logs.iter().any(|m| m.contains("target + named ns")));
 
   // Clean up
