@@ -22,7 +22,11 @@ def build_project(mode: str, args: List[str]):
   list = generator.list_all_modules()
   generator.generate_files(list)
 
-  subprocess.run(["cargo", "build", *args])
+  if mode == "release":
+    subprocess.run(["cargo", "build", "--release" , *args])
+  else:
+    subprocess.run(["cargo", "build", *args])
+
   if not os.path.exists(OUTPUT):
     os.makedirs(OUTPUT)
   if sys.platform == "win32":
@@ -35,8 +39,9 @@ def build_project(mode: str, args: List[str]):
     shutil.copy2(EXECUTE, TO)
 
 def main():
-  args = sys.argv[1:]
-  build_project("debug", args)
+  mode = sys.argv[1]
+  args = sys.argv[2:]
+  build_project(mode, args)
 
 if __name__ == "__main__":
   main()
