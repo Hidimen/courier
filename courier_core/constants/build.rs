@@ -1,7 +1,7 @@
 use gix::head::Kind;
 
 fn main() -> anyhow::Result<()> {
-  let repo = gix::open("../../")?;
+  let repo = gix::open(env!("CARGO_MANIFEST_PATH"))?;
   let commit_id = repo.head_id()?;
 
   let head = repo.head()?;
