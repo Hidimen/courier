@@ -1,9 +1,5 @@
 [workspace]
-members = ["builtin",
-  "courier",
-  "courier_core/*",
-  "waybill",
-]
+members = ["builtin", "courier", "courier_core/*", "waybill"]
 resolver = "3"
 
 [workspace.package]

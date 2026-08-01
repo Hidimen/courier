@@ -1,6 +1,6 @@
-use clap::{Parser, Subcommand};
+use clap::Parser;
 
-use crate::commands::start::StartArgs;
+use crate::Commands;
 
 /// Control CLI for Courier
 #[derive(Parser)]
@@ -26,12 +26,7 @@ impl Cli {
   pub async fn execute(self) {
     match &self.commands {
       Commands::Start(args) => args.execute().await,
+      Commands::Version(args) => args.execute().await,
     }
   }
-}
-
-#[derive(Subcommand)]
-enum Commands {
-  /// Start a server instance
-  Start(StartArgs),
 }

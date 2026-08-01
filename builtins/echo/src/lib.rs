@@ -1,7 +1,6 @@
 use depot::DepotBuilder;
 use logger::{
-  Level, PrettyFormatter, debug, error, fatal, flows::ConsoleFlow, info, trace,
-  warn,
+  Level, PrettyFormatter, flows::ConsoleFlow, info,
 };
 use network::{
   Frame, KeepAlive,
@@ -70,11 +69,6 @@ pub async fn boot() {
   let event_bus = event::EventBus::new(1024).install();
 
   info!("Server is running on port 8080.");
-  warn!("This is warn");
-  error!("This is error");
-  trace!("This is trace");
-  debug!("This is debug");
-  fatal!("This is fatal");
 
   let mut server = DepotBuilder::default()
     .logger(logger)

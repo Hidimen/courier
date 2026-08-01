@@ -5,6 +5,7 @@
 /target
 output
 build/__pycache__
+build_cache
 
 # Editor's settings
 .vscode

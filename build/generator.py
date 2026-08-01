@@ -6,6 +6,7 @@ from typing import List
 import re
 import os
 import logging
+from git_cloner import GitCloner
 
 # PATH
 ROOT = Path(os.getcwd())
@@ -40,17 +41,60 @@ def list_all_modules() -> List[BuiltinModule]:
           if "package" in manifest and "metadata" in manifest["package"] and "carrier" in manifest["package"]["metadata"]:
             metadata = manifest["package"]["metadata"]["carrier"]
             if metadata["kind"] == "bootloader":
-              list.append(BuiltinModule(manifest["package"]["name"], BuiltinModuleKind.BOOTLOADER, metadata["entry"], item.relative_to(ROOT)))
+              list.append(BuiltinModule(manifest["package"]["name"], BuiltinModuleKind.BOOTLOADER, metadata["entry"], item))
             elif metadata["kind"] == "enhancement":
-              list.append(BuiltinModule(manifest["package"]["name"], BuiltinModuleKind.ENHANCEMENT, "", item.relative_to(ROOT)))
+              list.append(BuiltinModule(manifest["package"]["name"], BuiltinModuleKind.ENHANCEMENT, "", item))
             elif metadata["kind"] == "full":
-              list.append(BuiltinModule(manifest["package"]["name"], BuiltinModuleKind.FULL, metadata["entry"], item.relative_to(ROOT)))
+              list.append(BuiltinModule(manifest["package"]["name"], BuiltinModuleKind.FULL, metadata["entry"], item))
             else:
               logging.error("Unknown builtin kind in {}".format(toml_path))
           else:
             logging.error("{} is not carrier-managed crate".format(item))
         except tomllib.TOMLDecodeError as e:
           logging.error("Failed to decode {}: {}".format(toml_path, e))
+
+    elif item.is_file():
+      with open(item, "rb") as f:
+        placeholder = tomllib.load(f)
+        if "dir" in placeholder:
+          path = Path(placeholder["dir"])
+          with open(path / "Cargo.toml", "rb") as fd:
+            manifest = tomllib.load(fd)
+            if "package" in manifest and "metadata" in manifest["package"] and "carrier" in manifest["package"]["metadata"]:
+              metadata = manifest["package"]["metadata"]["carrier"]
+              if metadata["kind"] == "bootloader":
+                list.append(BuiltinModule(manifest["package"]["name"], BuiltinModuleKind.BOOTLOADER, metadata["entry"], path))
+              elif metadata["kind"] == "enhancement":
+                list.append(BuiltinModule(manifest["package"]["name"], BuiltinModuleKind.ENHANCEMENT, "", path))
+              elif metadata["kind"] == "full":
+                list.append(BuiltinModule(manifest["package"]["name"], BuiltinModuleKind.FULL, metadata["entry"], path))
+              else:
+                logging.error("Unknown builtin kind in {}".format(path / "Cargo.toml"))
+            else:
+              logging.error("{} is not carrier-managed crate".format(item))
+        elif "git" in placeholder:
+          cache_dir_path = ROOT / "build_cache"
+          if not cache_dir_path.exists():
+            os.makedirs(cache_dir_path)
+
+          clone = GitCloner(cache_dir_path, placeholder["git"])
+          path = clone.clone()
+
+          with open(path / "Cargo.toml", "rb") as fd:
+            manifest = tomllib.load(fd)
+            if "package" in manifest and "metadata" in manifest["package"] and "carrier" in manifest["package"]["metadata"]:
+              metadata = manifest["package"]["metadata"]["carrier"]
+              if metadata["kind"] == "bootloader":
+                list.append(BuiltinModule(manifest["package"]["name"], BuiltinModuleKind.BOOTLOADER, metadata["entry"], path))
+              elif metadata["kind"] == "enhancement":
+                list.append(BuiltinModule(manifest["package"]["name"], BuiltinModuleKind.ENHANCEMENT, "", path))
+              elif metadata["kind"] == "full":
+                list.append(BuiltinModule(manifest["package"]["name"], BuiltinModuleKind.FULL, metadata["entry"], path))
+              else:
+                logging.error("Unknown builtin kind in {}".format(path / "Cargo.toml"))
+            else:
+              logging.error("{} is not carrier-managed crate".format(item))
+          pass
 
     else:
       continue
@@ -82,7 +126,7 @@ def generate_files(list: List[BuiltinModule]) -> None:
 
   for module in list:
     if module.kind == BuiltinModuleKind.BOOTLOADER:
-      builtin_dep.append('{} = {{ path = "../{}", optional = true }}'.format(module.name, module.path.as_posix()))
+      builtin_dep.append('{} = {{ path = "{}", optional = true }}'.format(module.name, module.path.as_posix()))
       builtin_feat.append('{} = ["dep:{}"]'.format(module.name, module.name))
       waybill_feat.append('{} = ["builtin/{}"]'.format(module.name, module.name))
       courier_feat.append('{} = ["builtin/{}", "waybill/{}"]'.format(module.name, module.name, module.name))
@@ -97,7 +141,7 @@ pub use {};'''.format(module.name, module.name))
         '''      #[cfg(feature = "{}")]
       BootloaderList::{} => builtin::{}().await,'''.format(module.name, to_pascal_case(module.name), f"{module.name}::{module.entry}"))
     elif module.kind == BuiltinModuleKind.ENHANCEMENT:
-      builtin_dep.append('{} = {{ path = "../{}", optional = true }}'.format(module.name, module.path.as_posix()))
+      builtin_dep.append('{} = {{ path = "{}", optional = true }}'.format(module.name, module.path.as_posix()))
       builtin_feat.append('{} = ["dep:{}"]'.format(module.name, module.name))
       waybill_feat.append('{} = ["builtin/{}"]'.format(module.name, module.name))
       courier_feat.append('{} = ["builtin/{}"]'.format(module.name, module.name))
@@ -106,7 +150,7 @@ pub use {};'''.format(module.name, module.name))
 #[doc(inline)]
 pub use {};'''.format(module.name, module.name))
     elif module.kind == BuiltinModuleKind.FULL:
-      builtin_dep.append('{} = {{ path = "../{}", optional = true }}'.format(module.name, module.path.as_posix()))
+      builtin_dep.append('{} = {{ path = "{}", optional = true }}'.format(module.name, module.path.as_posix()))
       builtin_feat.append('{} = ["dep:{}"]'.format(module.name, module.name))
       waybill_feat.append('{} = ["builtin/{}"]'.format(module.name, module.name))
       courier_feat.append('{} = ["builtin/{}", "waybill/{}"]'.format(module.name, module.name, module.name))

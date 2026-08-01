@@ -1,13 +1,13 @@
 [package]
-name = "http"
-description = "HTTP builtin for project"
+name = "constants"
+description = "Provide constants for project"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
-[package.metadata.carrier]
-kind = "full"
-entry = "boot"
+[build-dependencies]
+gix = "0.86.0"
+anyhow = "1.0.104"
 
 [dependencies]
