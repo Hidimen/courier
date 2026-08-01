@@ -281,3 +281,15 @@ def replace_with_marker(marker: str, content: str, new: str) -> str:
 
 def to_pascal_case(name: str) -> str:
   return "".join(w.capitalize() for w in name.split("_"))
+
+def main():
+  logging.basicConfig(
+    level=logging.INFO,
+    format="%(levelname)s - %(message)s"
+  )
+
+  list = list_all_modules()
+  generate_files(list)
+
+if __name__ == "__main__":
+  main()

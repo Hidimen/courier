@@ -1,5 +1,5 @@
 from typing import List
-import generator
+import build.generate as generate
 import logging
 import os
 from pathlib import Path
@@ -19,8 +19,8 @@ def run_project(mode: str, args: List[str]):
   )
 
   logging.info("Running project...")
-  list = generator.list_all_modules()
-  generator.generate_files(list)
+  list = generate.list_all_modules()
+  generate.generate_files(list)
 
   subprocess.run(["cargo", "run", *args])
 

@@ -1,4 +1,4 @@
-import generator
+import build.generate as generate
 import logging
 from pathlib import Path
 import subprocess
@@ -16,7 +16,7 @@ def main():
   )
 
   try:
-    generator.clean_files()
+    generate.clean_files()
     logging.info("Generated files are cleaned completely")
 
     subprocess.run(["cargo", "clean"])
