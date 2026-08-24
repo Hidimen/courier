@@ -1,0 +1,16 @@
+[package]
+name = "macro_build"
+description = "Provide proc macro for building"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lib]
+proc-macro = true
+doc = false
+
+[dependencies]
+syn.workspace = true
+quote.workspace = true
+proc-macro2.workspace = true

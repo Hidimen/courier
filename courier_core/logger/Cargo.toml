@@ -8,5 +8,6 @@ license.workspace = true
 
 [dependencies]
 crossbeam-channel.workspace = true
+marquage.workspace = true
 chrono = "0.4.45"
 bytes = "1.11.1"

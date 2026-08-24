@@ -88,6 +88,106 @@ macro_rules! trace {
   };
 }
 
+/// Try to logs a message at the [`Trace`](crate::Level::Trace) level
+/// via the globally-installed logger.
+///
+/// # Usage
+///
+/// ```rust
+/// # use logger::try_trace;
+/// # // Requires a globally-installed logger.
+/// # let val = 42;
+/// try_trace!("Trace message");
+/// try_trace!("x = {}", val);
+/// try_trace!("my_mod", "Trace from my_mod");
+/// try_trace!("my_mod", "x = {}", val);
+/// try_trace!("my_mod", "x = {val}", val = val);
+/// try_trace!(namespace = "my_mod", "Trace via named ns");
+/// try_trace!(target = "file", "Trace with target");
+/// try_trace!(target = "file", "fmt: {}", val);
+/// try_trace!(target = "file", namespace = "my_mod", "targeted trace");
+/// ```
+///
+/// **Note**: The `target` name must correspond to an existing
+/// [`Flow`](crate::Flow) implementation.
+/// **Note**: Nothing will happen if logger instance does not exist.
+#[macro_export]
+macro_rules! try_trace {
+  // ── Named-key arms (before any generic $($fmt:tt)+) ──
+
+  (namespace = $namespace:literal, $msg:literal) => {
+    if let Some(instance) = $crate::Logger::try_get_instance() {
+      instance.trace_from_static($msg, $namespace);
+    }
+  };
+
+  (namespace = $namespace:literal, $($fmt:tt)+) => {
+    if let Some(instance) = $crate::Logger::try_get_instance() {
+      instance.trace(format!($($fmt)+), $namespace);
+    }
+  };
+
+  (target = $target:literal, namespace = $namespace:literal, $msg:literal) => {
+    if let Some(instance) = $crate::Logger::try_get_instance() {
+      instance.trace_from_static_with_target($msg, $namespace, $target);
+    }
+  };
+
+  (target = $target:literal, namespace = $namespace:literal, $($fmt:tt)+) => {
+    if let Some(instance) = $crate::Logger::try_get_instance() {
+      instance.trace_with_target(format!($($fmt)+), $namespace, $target);
+    }
+  };
+
+  (target = $target:literal, $msg:literal) => {
+    if let Some(instance) = $crate::Logger::try_get_instance() {
+      instance
+        .trace_from_static_with_target($msg, env!("CARGO_PKG_NAME"), $target);
+    }
+  };
+
+  (target = $target:literal, $($fmt:tt)+) => {
+    if let Some(instance) = $crate::Logger::try_get_instance() {
+      instance.trace_with_target(
+        format!($($fmt)+),
+        env!("CARGO_PKG_NAME"),
+        $target,
+      );
+    }
+  };
+
+  // ── Positional namespace (literal-first) ──
+  // Requires two string literals to avoid ambiguity with
+  // `try_trace!("fmt {}", arg)` which must fall through to the
+  // single-arg catch-all below.
+
+  ($namespace:literal, $msg:literal) => {
+    if let Some(instance) = $crate::Logger::try_get_instance() {
+      instance.trace_from_static($msg, $namespace);
+    }
+  };
+
+  ($namespace:literal, $template:literal, $($arg:tt)*) => {
+    if let Some(instance) = $crate::Logger::try_get_instance() {
+      instance.trace(format!($template, $($arg)*), $namespace);
+    }
+  };
+
+  // ── Default namespace (catch-all, LAST) ──
+
+  ($msg:literal) => {
+    if let Some(instance) = $crate::Logger::try_get_instance() {
+      instance.trace_from_static($msg, env!("CARGO_PKG_NAME"));
+    }
+  };
+
+  ($($fmt:tt)+) => {
+    if let Some(instance) = $crate::Logger::try_get_instance() {
+      instance.trace(format!($($fmt)+), env!("CARGO_PKG_NAME"));
+    }
+  };
+}
+
 /// Logs a message at the [`Debug`](crate::Level::Debug) level via the
 /// globally-installed logger.
 ///
@@ -166,6 +266,107 @@ macro_rules! debug {
   ($($fmt:tt)+) => {
     $crate::Logger::get_instance()
       .debug(format!($($fmt)+), env!("CARGO_PKG_NAME"));
+  };
+}
+
+/// Try to logs a message at the [`Debug`](crate::Level::Debug) level
+/// via the globally-installed logger.
+///
+/// # Usage
+///
+/// ```rust
+/// # use logger::try_debug;
+/// # // Requires a globally-installed logger.
+/// # let state = (42, "ok");
+/// # let val = 42;
+/// try_debug!("Debug message");
+/// try_debug!("state = {:?}", state);
+/// try_debug!("my_mod", "Debug from my_mod");
+/// try_debug!("my_mod", "x = {}", val);
+/// try_debug!("my_mod", "x = {val}", val = val);
+/// try_debug!(namespace = "my_mod", "Debug via named ns");
+/// try_debug!(target = "file", "Debug with target");
+/// try_debug!(target = "file", "fmt: {}", val);
+/// try_debug!(target = "file", namespace = "my_mod", "targeted debug");
+/// ```
+///
+/// **Note**: The `target` name must correspond to an existing
+/// [`Flow`](crate::Flow) implementation.
+/// **Note**: Nothing will happen if logger instance does not exist.
+#[macro_export]
+macro_rules! try_debug {
+  // ── Named-key arms (before any generic $($fmt:tt)+) ──
+
+  (namespace = $namespace:literal, $msg:literal) => {
+    if let Some(instance) = $crate::Logger::try_get_instance() {
+      instance.debug_from_static($msg, $namespace);
+    }
+  };
+
+  (namespace = $namespace:literal, $($fmt:tt)+) => {
+    if let Some(instance) = $crate::Logger::try_get_instance() {
+      instance.debug(format!($($fmt)+), $namespace);
+    }
+  };
+
+  (target = $target:literal, namespace = $namespace:literal, $msg:literal) => {
+    if let Some(instance) = $crate::Logger::try_get_instance() {
+      instance.debug_from_static_with_target($msg, $namespace, $target);
+    }
+  };
+
+  (target = $target:literal, namespace = $namespace:literal, $($fmt:tt)+) => {
+    if let Some(instance) = $crate::Logger::try_get_instance() {
+      instance.debug_with_target(format!($($fmt)+), $namespace, $target);
+    }
+  };
+
+  (target = $target:literal, $msg:literal) => {
+    if let Some(instance) = $crate::Logger::try_get_instance() {
+      instance
+        .debug_from_static_with_target($msg, env!("CARGO_PKG_NAME"), $target);
+    }
+  };
+
+  (target = $target:literal, $($fmt:tt)+) => {
+    if let Some(instance) = $crate::Logger::try_get_instance() {
+      instance.debug_with_target(
+        format!($($fmt)+),
+        env!("CARGO_PKG_NAME"),
+        $target,
+      );
+    }
+  };
+
+  // ── Positional namespace (literal-first) ──
+  // Requires two string literals to avoid ambiguity with
+  // `try_debug!("fmt {}", arg)` which must fall through to the
+  // single-arg catch-all below.
+
+  ($namespace:literal, $msg:literal) => {
+    if let Some(instance) = $crate::Logger::try_get_instance() {
+      instance.debug_from_static($msg, $namespace);
+    }
+  };
+
+  ($namespace:literal, $template:literal, $($arg:tt)*) => {
+    if let Some(instance) = $crate::Logger::try_get_instance() {
+      instance.debug(format!($template, $($arg)*), $namespace);
+    }
+  };
+
+  // ── Default namespace (catch-all, LAST) ──
+
+  ($msg:literal) => {
+    if let Some(instance) = $crate::Logger::try_get_instance() {
+      instance.debug_from_static($msg, env!("CARGO_PKG_NAME"));
+    }
+  };
+
+  ($($fmt:tt)+) => {
+    if let Some(instance) = $crate::Logger::try_get_instance() {
+      instance.debug(format!($($fmt)+), env!("CARGO_PKG_NAME"));
+    }
   };
 }
 
@@ -252,6 +453,109 @@ macro_rules! info {
   };
 }
 
+/// Try to logs a message at the [`Info`](crate::Level::Info) level
+/// via the globally-installed logger.
+///
+/// # Usage
+///
+/// ```rust
+/// # use logger::try_info;
+/// # // Requires a globally-installed logger.
+/// # let name = "alice";
+/// # let n = 42;
+/// # let user = "bob";
+/// # let addr = "10.0.0.1";
+/// try_info!("Info message");
+/// try_info!("user {} connected", name);
+/// try_info!("my_mod", "Info from my_mod");
+/// try_info!("my_mod", "count = {}", n);
+/// try_info!("my_mod", "user {name} from {ip}", name = user, ip = addr);
+/// try_info!(namespace = "my_mod", "Info via named ns");
+/// try_info!(target = "file", "Info with target");
+/// try_info!(target = "file", "count = {}", n);
+/// try_info!(target = "file", namespace = "my_mod", "targeted info");
+/// ```
+///
+/// **Note**: The `target` name must correspond to an existing
+/// [`Flow`](crate::Flow) implementation.
+/// **Note**: Nothing will happen if logger instance does not exist.
+#[macro_export]
+macro_rules! try_info {
+  // ── Named-key arms (before any generic $($fmt:tt)+) ──
+
+  (namespace = $namespace:literal, $msg:literal) => {
+    if let Some(instance) = $crate::Logger::try_get_instance() {
+      instance.info_from_static($msg, $namespace);
+    }
+  };
+
+  (namespace = $namespace:literal, $($fmt:tt)+) => {
+    if let Some(instance) = $crate::Logger::try_get_instance() {
+      instance.info(format!($($fmt)+), $namespace);
+    }
+  };
+
+  (target = $target:literal, namespace = $namespace:literal, $msg:literal) => {
+    if let Some(instance) = $crate::Logger::try_get_instance() {
+      instance.info_from_static_with_target($msg, $namespace, $target);
+    }
+  };
+
+  (target = $target:literal, namespace = $namespace:literal, $($fmt:tt)+) => {
+    if let Some(instance) = $crate::Logger::try_get_instance() {
+      instance.info_with_target(format!($($fmt)+), $namespace, $target);
+    }
+  };
+
+  (target = $target:literal, $msg:literal) => {
+    if let Some(instance) = $crate::Logger::try_get_instance() {
+      instance
+        .info_from_static_with_target($msg, env!("CARGO_PKG_NAME"), $target);
+    }
+  };
+
+  (target = $target:literal, $($fmt:tt)+) => {
+    if let Some(instance) = $crate::Logger::try_get_instance() {
+      instance.info_with_target(
+        format!($($fmt)+),
+        env!("CARGO_PKG_NAME"),
+        $target,
+      );
+    }
+  };
+
+  // ── Positional namespace (literal-first) ──
+  // Requires two string literals to avoid ambiguity with
+  // `try_info!("fmt {}", arg)` which must fall through to the
+  // single-arg catch-all below.
+
+  ($namespace:literal, $msg:literal) => {
+    if let Some(instance) = $crate::Logger::try_get_instance() {
+      instance.info_from_static($msg, $namespace);
+    }
+  };
+
+  ($namespace:literal, $template:literal, $($arg:tt)*) => {
+    if let Some(instance) = $crate::Logger::try_get_instance() {
+      instance.info(format!($template, $($arg)*), $namespace);
+    }
+  };
+
+  // ── Default namespace (catch-all, LAST) ──
+
+  ($msg:literal) => {
+    if let Some(instance) = $crate::Logger::try_get_instance() {
+      instance.info_from_static($msg, env!("CARGO_PKG_NAME"));
+    }
+  };
+
+  ($($fmt:tt)+) => {
+    if let Some(instance) = $crate::Logger::try_get_instance() {
+      instance.info(format!($($fmt)+), env!("CARGO_PKG_NAME"));
+    }
+  };
+}
+
 /// Logs a message at the [`Warn`](crate::Level::Warn) level via the
 /// globally-installed logger.
 ///
@@ -330,6 +634,107 @@ macro_rules! warn {
   ($($fmt:tt)+) => {
     $crate::Logger::get_instance()
       .warn(format!($($fmt)+), env!("CARGO_PKG_NAME"));
+  };
+}
+
+/// Try to logs a message at the [`Warn`](crate::Level::Warn) level
+/// via the globally-installed logger.
+///
+/// # Usage
+///
+/// ```rust
+/// # use logger::try_warn;
+/// # // Requires a globally-installed logger.
+/// # let pct = 95u8;
+/// # let n = 3u32;
+/// try_warn!("Warning message");
+/// try_warn!("disk usage = {}%", pct);
+/// try_warn!("my_mod", "Warning from my_mod");
+/// try_warn!("my_mod", "retries = {}", n);
+/// try_warn!("my_mod", "retry {n}/{max}", n = n, max = 10u32);
+/// try_warn!(namespace = "my_mod", "Warning via named ns");
+/// try_warn!(target = "file", "Warning with target");
+/// try_warn!(target = "file", "disk = {}%", pct);
+/// try_warn!(target = "file", namespace = "my_mod", "targeted warn");
+/// ```
+///
+/// **Note**: The `target` name must correspond to an existing
+/// [`Flow`](crate::Flow) implementation.
+/// **Note**: Nothing will happen if logger instance does not exist.
+#[macro_export]
+macro_rules! try_warn {
+  // ── Named-key arms (before any generic $($fmt:tt)+) ──
+
+  (namespace = $namespace:literal, $msg:literal) => {
+    if let Some(instance) = $crate::Logger::try_get_instance() {
+      instance.warn_from_static($msg, $namespace);
+    }
+  };
+
+  (namespace = $namespace:literal, $($fmt:tt)+) => {
+    if let Some(instance) = $crate::Logger::try_get_instance() {
+      instance.warn(format!($($fmt)+), $namespace);
+    }
+  };
+
+  (target = $target:literal, namespace = $namespace:literal, $msg:literal) => {
+    if let Some(instance) = $crate::Logger::try_get_instance() {
+      instance.warn_from_static_with_target($msg, $namespace, $target);
+    }
+  };
+
+  (target = $target:literal, namespace = $namespace:literal, $($fmt:tt)+) => {
+    if let Some(instance) = $crate::Logger::try_get_instance() {
+      instance.warn_with_target(format!($($fmt)+), $namespace, $target);
+    }
+  };
+
+  (target = $target:literal, $msg:literal) => {
+    if let Some(instance) = $crate::Logger::try_get_instance() {
+      instance
+        .warn_from_static_with_target($msg, env!("CARGO_PKG_NAME"), $target);
+    }
+  };
+
+  (target = $target:literal, $($fmt:tt)+) => {
+    if let Some(instance) = $crate::Logger::try_get_instance() {
+      instance.warn_with_target(
+        format!($($fmt)+),
+        env!("CARGO_PKG_NAME"),
+        $target,
+      );
+    }
+  };
+
+  // ── Positional namespace (literal-first) ──
+  // Requires two string literals to avoid ambiguity with
+  // `try_warn!("fmt {}", arg)` which must fall through to the
+  // single-arg catch-all below.
+
+  ($namespace:literal, $msg:literal) => {
+    if let Some(instance) = $crate::Logger::try_get_instance() {
+      instance.warn_from_static($msg, $namespace);
+    }
+  };
+
+  ($namespace:literal, $template:literal, $($arg:tt)*) => {
+    if let Some(instance) = $crate::Logger::try_get_instance() {
+      instance.warn(format!($template, $($arg)*), $namespace);
+    }
+  };
+
+  // ── Default namespace (catch-all, LAST) ──
+
+  ($msg:literal) => {
+    if let Some(instance) = $crate::Logger::try_get_instance() {
+      instance.warn_from_static($msg, env!("CARGO_PKG_NAME"));
+    }
+  };
+
+  ($($fmt:tt)+) => {
+    if let Some(instance) = $crate::Logger::try_get_instance() {
+      instance.warn(format!($($fmt)+), env!("CARGO_PKG_NAME"));
+    }
   };
 }
 
@@ -414,6 +819,107 @@ macro_rules! error {
   };
 }
 
+/// Try to logs a message at the [`Error`](crate::Level::Error) level
+/// via the globally-installed logger.
+///
+/// # Usage
+///
+/// ```rust
+/// # use logger::try_error;
+/// # // Requires a globally-installed logger.
+/// # let e = std::io::Error::new(std::io::ErrorKind::Other, "boom");
+/// # let code = 500u16;
+/// try_error!("Error message");
+/// try_error!("io error: {}", e);
+/// try_error!("my_mod", "Error from my_mod");
+/// try_error!("my_mod", "code = {}", code);
+/// try_error!("my_mod", "code = {code}, msg = {msg}", code = code, msg = "err");
+/// try_error!(namespace = "my_mod", "Error via named ns");
+/// try_error!(target = "file", "Error with target");
+/// try_error!(target = "file", "err: {}", e);
+/// try_error!(target = "file", namespace = "my_mod", "targeted error");
+/// ```
+///
+/// **Note**: The `target` name must correspond to an existing
+/// [`Flow`](crate::Flow) implementation.
+/// **Note**: Nothing will happen if logger instance does not exist.
+#[macro_export]
+macro_rules! try_error {
+  // ── Named-key arms (before any generic $($fmt:tt)+) ──
+
+  (namespace = $namespace:literal, $msg:literal) => {
+    if let Some(instance) = $crate::Logger::try_get_instance() {
+      instance.error_from_static($msg, $namespace);
+    }
+  };
+
+  (namespace = $namespace:literal, $($fmt:tt)+) => {
+    if let Some(instance) = $crate::Logger::try_get_instance() {
+      instance.error(format!($($fmt)+), $namespace);
+    }
+  };
+
+  (target = $target:literal, namespace = $namespace:literal, $msg:literal) => {
+    if let Some(instance) = $crate::Logger::try_get_instance() {
+      instance.error_from_static_with_target($msg, $namespace, $target);
+    }
+  };
+
+  (target = $target:literal, namespace = $namespace:literal, $($fmt:tt)+) => {
+    if let Some(instance) = $crate::Logger::try_get_instance() {
+      instance.error_with_target(format!($($fmt)+), $namespace, $target);
+    }
+  };
+
+  (target = $target:literal, $msg:literal) => {
+    if let Some(instance) = $crate::Logger::try_get_instance() {
+      instance
+        .error_from_static_with_target($msg, env!("CARGO_PKG_NAME"), $target);
+    }
+  };
+
+  (target = $target:literal, $($fmt:tt)+) => {
+    if let Some(instance) = $crate::Logger::try_get_instance() {
+      instance.error_with_target(
+        format!($($fmt)+),
+        env!("CARGO_PKG_NAME"),
+        $target,
+      );
+    }
+  };
+
+  // ── Positional namespace (literal-first) ──
+  // Requires two string literals to avoid ambiguity with
+  // `try_error!("fmt {}", arg)` which must fall through to the
+  // single-arg catch-all below.
+
+  ($namespace:literal, $msg:literal) => {
+    if let Some(instance) = $crate::Logger::try_get_instance() {
+      instance.error_from_static($msg, $namespace);
+    }
+  };
+
+  ($namespace:literal, $template:literal, $($arg:tt)*) => {
+    if let Some(instance) = $crate::Logger::try_get_instance() {
+      instance.error(format!($template, $($arg)*), $namespace);
+    }
+  };
+
+  // ── Default namespace (catch-all, LAST) ──
+
+  ($msg:literal) => {
+    if let Some(instance) = $crate::Logger::try_get_instance() {
+      instance.error_from_static($msg, env!("CARGO_PKG_NAME"));
+    }
+  };
+
+  ($($fmt:tt)+) => {
+    if let Some(instance) = $crate::Logger::try_get_instance() {
+      instance.error(format!($($fmt)+), env!("CARGO_PKG_NAME"));
+    }
+  };
+}
+
 /// Logs a message at the [`Fatal`](crate::Level::Fatal) level via the
 /// globally-installed logger.
 ///
@@ -492,5 +998,106 @@ macro_rules! fatal {
   ($($fmt:tt)+) => {
     $crate::Logger::get_instance()
       .fatal(format!($($fmt)+), env!("CARGO_PKG_NAME"));
+  };
+}
+
+/// Try to logs a message at the [`Fatal`](crate::Level::Fatal) level
+/// via the globally-installed logger.
+///
+/// # Usage
+///
+/// ```rust
+/// # use logger::try_fatal;
+/// # // Requires a globally-installed logger.
+/// # let reason = "out of memory";
+/// # let r = "oom";
+/// try_fatal!("Fatal error");
+/// try_fatal!("cannot continue: {}", reason);
+/// try_fatal!("my_mod", "Fatal from my_mod");
+/// try_fatal!("my_mod", "reason = {}", r);
+/// try_fatal!("my_mod", "reason = {r}, code = {c}", r = r, c = 1u32);
+/// try_fatal!(namespace = "my_mod", "Fatal via named ns");
+/// try_fatal!(target = "file", "Fatal with target");
+/// try_fatal!(target = "file", "reason: {}", r);
+/// try_fatal!(target = "file", namespace = "my_mod", "targeted fatal");
+/// ```
+///
+/// **Note**: The `target` name must correspond to an existing
+/// [`Flow`](crate::Flow) implementation.
+/// **Note**: Nothing will happen if logger instance does not exist.
+#[macro_export]
+macro_rules! try_fatal {
+  // ── Named-key arms (before any generic $($fmt:tt)+) ──
+
+  (namespace = $namespace:literal, $msg:literal) => {
+    if let Some(instance) = $crate::Logger::try_get_instance() {
+      instance.fatal_from_static($msg, $namespace);
+    }
+  };
+
+  (namespace = $namespace:literal, $($fmt:tt)+) => {
+    if let Some(instance) = $crate::Logger::try_get_instance() {
+      instance.fatal(format!($($fmt)+), $namespace);
+    }
+  };
+
+  (target = $target:literal, namespace = $namespace:literal, $msg:literal) => {
+    if let Some(instance) = $crate::Logger::try_get_instance() {
+      instance.fatal_from_static_with_target($msg, $namespace, $target);
+    }
+  };
+
+  (target = $target:literal, namespace = $namespace:literal, $($fmt:tt)+) => {
+    if let Some(instance) = $crate::Logger::try_get_instance() {
+      instance.fatal_with_target(format!($($fmt)+), $namespace, $target);
+    }
+  };
+
+  (target = $target:literal, $msg:literal) => {
+    if let Some(instance) = $crate::Logger::try_get_instance() {
+      instance
+        .fatal_from_static_with_target($msg, env!("CARGO_PKG_NAME"), $target);
+    }
+  };
+
+  (target = $target:literal, $($fmt:tt)+) => {
+    if let Some(instance) = $crate::Logger::try_get_instance() {
+      instance.fatal_with_target(
+        format!($($fmt)+),
+        env!("CARGO_PKG_NAME"),
+        $target,
+      );
+    }
+  };
+
+  // ── Positional namespace (literal-first) ──
+  // Requires two string literals to avoid ambiguity with
+  // `try_fatal!("fmt {}", arg)` which must fall through to the
+  // single-arg catch-all below.
+
+  ($namespace:literal, $msg:literal) => {
+    if let Some(instance) = $crate::Logger::try_get_instance() {
+      instance.fatal_from_static($msg, $namespace);
+    }
+  };
+
+  ($namespace:literal, $template:literal, $($arg:tt)*) => {
+    if let Some(instance) = $crate::Logger::try_get_instance() {
+      instance.fatal(format!($template, $($arg)*), $namespace);
+    }
+  };
+
+  // ── Default namespace (catch-all, LAST) ──
+
+  ($msg:literal) => {
+    if let Some(instance) = $crate::Logger::try_get_instance() {
+      instance.fatal_from_static($msg, env!("CARGO_PKG_NAME"));
+    }
+  };
+
+  ($($fmt:tt)+) => {
+    if let Some(instance) = $crate::Logger::try_get_instance() {
+      instance.fatal(format!($($fmt)+), env!("CARGO_PKG_NAME"));
+    }
   };
 }

@@ -24,16 +24,14 @@ use std::{error::Error, future::Future};
 ///
 /// A leaf middleware that always passes through:
 ///
-/// ```rust,ignore
-/// use std::error::Error;
-///
+/// ```rust
 /// use relay::Middleware;
 ///
 /// struct Logger;
 ///
-/// impl<Req> Middleware<Req> for Logger {
+/// impl<Req: Send> Middleware<Req> for Logger {
 ///   type Response = Req;
-///   type Error = Box<dyn Error + Send + Sync>;
+///   type Error = std::convert::Infallible;
 ///
 ///   async fn handle(
 ///     &self,
@@ -47,10 +45,26 @@ use std::{error::Error, future::Future};
 ///
 /// A wrapping middleware that can short-circuit:
 ///
-/// ```rust,ignore
-/// use std::error::Error;
-///
+/// ```rust
 /// use relay::Middleware;
+///
+/// /// Error type for the [`Timeout`] wrapper.
+/// #[derive(Debug)]
+/// enum TimeoutError<E> {
+///   Elapsed,
+///   Inner(E),
+/// }
+///
+/// impl<E: std::fmt::Display> std::fmt::Display for TimeoutError<E> {
+///   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+///     match self {
+///       Self::Elapsed => write!(f, "request timed out"),
+///       Self::Inner(e) => write!(f, "inner middleware failed: {e}"),
+///     }
+///   }
+/// }
+///
+/// impl<E: std::error::Error> std::error::Error for TimeoutError<E> {}
 ///
 /// struct Timeout<Inner> {
 ///   inner: Inner,
@@ -59,10 +73,11 @@ use std::{error::Error, future::Future};
 ///
 /// impl<Req, Inner> Middleware<Req> for Timeout<Inner>
 /// where
+///   Req: Send,
 ///   Inner: Middleware<Req>,
 /// {
 ///   type Response = Inner::Response;
-///   type Error = Box<dyn Error + Send + Sync>;
+///   type Error = TimeoutError<Inner::Error>;
 ///
 ///   async fn handle(
 ///     &self,
@@ -73,7 +88,8 @@ use std::{error::Error, future::Future};
 ///       self.inner.handle(req),
 ///     )
 ///     .await
-///     .map_err(|_| "timeout".into())? // Short-circuit on timeout
+///     .map_err(|_| TimeoutError::Elapsed)? // Short-circuit on timeout
+///     .map_err(TimeoutError::Inner)
 ///   }
 /// }
 /// ```

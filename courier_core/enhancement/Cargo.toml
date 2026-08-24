@@ -1,0 +1,12 @@
+[package]
+name = "enhancement"
+description = "Enhance courier's capabilities"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+network = { path = "../network" }
+protocol = { path = "../protocol" }
+relay = { path = "../relay" }

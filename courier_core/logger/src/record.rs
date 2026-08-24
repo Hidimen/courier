@@ -7,7 +7,7 @@ use crate::Level;
 ///
 /// Records are created through the logger's public methods (e.g.
 /// [`Logger::info`](crate::Logger::info)) or the convenience macros
-/// (`info!`, `warn!`, etc.). The [`DefaultFormatter`](crate::builder::DefaultFormatter)
+/// (`info!`, `warn!`, etc.). The [`DefaultFormatter`](crate::format::DefaultFormatter)
 /// consumes records to produce the final output format.
 ///
 /// # Fields

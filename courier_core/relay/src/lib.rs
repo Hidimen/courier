@@ -9,19 +9,19 @@
 //! Three patterns are supported:
 //!
 //! - **Sequential chain** (via
-//!   [`PipelineBuilder::middleware`](PipelineBuilder::middleware)):
+//!   [`Builder::middleware`](Builder::middleware)):
 //!   FIFO composition wrapped in [`Chain`].
 //! - **Response transform** (via
-//!   [`PipelineBuilder::then`](PipelineBuilder::then)): appends a
+//!   [`Builder::then`](Builder::then)): appends a
 //!   [`Then`] middleware via [`Chain`] to map the response.
 //! - **Wrapping layer** (via
-//!   [`PipelineBuilder::layer`](PipelineBuilder::layer)): LIFO
+//!   [`Builder::layer`](Builder::layer)): LIFO
 //!   composition where each layer wraps the inner chain.
 //!
 //! # Quick start
 //!
-//! ```rust,ignore
-//! use relay::{Layer, Middleware, PipelineBuilder};
+//! ```rust
+//! use relay::{Layer, Middleware, Builder};
 //!
 //! struct Handler;
 //! impl<Req: Send> Middleware<Req> for Handler {
@@ -32,7 +32,7 @@
 //!   }
 //! }
 //!
-//! let pipeline = PipelineBuilder::new()
+//! let pipeline = Builder::new()
 //!   .middleware(Handler)
 //!   .build();
 //! ```
@@ -43,7 +43,7 @@ mod middleware;
 mod pipeline;
 mod wrappers;
 
-pub use builder::{Empty, NonEmpty, PipelineBuilder};
+pub use builder::{Empty, NonEmpty, Builder};
 pub use chain::Chain;
 pub use layer::Layer;
 pub use middleware::Middleware;
@@ -257,7 +257,7 @@ mod tests {
   async fn layer_short_circuit() {
     let counter = Counter::new();
 
-    let pipeline = PipelineBuilder::new()
+    let pipeline = Builder::new()
       .middleware(counter.clone())
       .layer(GateLayer { allow: false })
       .build();
@@ -272,7 +272,7 @@ mod tests {
   async fn layer_passes_through_when_allowed() {
     let counter = Counter::new();
 
-    let pipeline = PipelineBuilder::new()
+    let pipeline = Builder::new()
       .middleware(counter.clone())
       .layer(GateLayer { allow: true })
       .build();
@@ -289,7 +289,7 @@ mod tests {
   #[tokio::test]
   async fn layer_lifo_order() {
     let leaf = Suffix { suffix: "" };
-    let pipeline = PipelineBuilder::new()
+    let pipeline = Builder::new()
       .middleware(leaf)
       .layer(PrefixLayer { prefix: "A_" })
       .layer(PrefixLayer { prefix: "B_" })
@@ -311,7 +311,7 @@ mod tests {
     let c_first = Counter::new();
     let c_second = Counter::new();
 
-    let pipeline = PipelineBuilder::new()
+    let pipeline = Builder::new()
       .middleware(c_first.clone())
       .middleware(c_second.clone())
       .layer(GateLayer { allow: true })
@@ -330,7 +330,7 @@ mod tests {
     let c_first = Counter::new();
     let c_second = Counter::new();
 
-    let pipeline = PipelineBuilder::new()
+    let pipeline = Builder::new()
       .middleware(c_first.clone())
       .middleware(c_second.clone())
       .layer(GateLayer { allow: true })
@@ -360,7 +360,7 @@ mod tests {
       }
     }
 
-    let pipeline = PipelineBuilder::new()
+    let pipeline = Builder::new()
       .middleware(ReturnNum)
       .then(|n: i32| n.to_string())
       .build();
@@ -372,7 +372,7 @@ mod tests {
   /// Verify `.then()` in Empty state creates a standalone Then.
   #[tokio::test]
   async fn empty_state_then_standalone() {
-    let pipeline = PipelineBuilder::new().then(|n: i32| n.to_string()).build();
+    let pipeline = Builder::new().then(|n: i32| n.to_string()).build();
 
     let result: Result<String, std::convert::Infallible> =
       pipeline.handle(42).await;
@@ -402,7 +402,7 @@ mod tests {
       }
     }
 
-    let pipeline = PipelineBuilder::new()
+    let pipeline = Builder::new()
       .middleware(ParseNum)
       .then(|n: i32| n.to_string())
       .middleware(HandleString)
@@ -440,7 +440,7 @@ mod tests {
 
     impl std::error::Error for WrappedError {}
 
-    let pipeline = PipelineBuilder::new()
+    let pipeline = Builder::new()
       .middleware(AlwaysErr)
       .map_err(|e: TestError| WrappedError(format!("wrapped: {e}")))
       .build();
@@ -466,7 +466,7 @@ mod tests {
       }
     }
 
-    let pipeline = PipelineBuilder::new()
+    let pipeline = Builder::new()
       .middleware(Echo)
       .then(|s: String| format!("[{s}]"))
       .map_err(|e: TestError| TestError(format!("wrapped: {e}")))
@@ -486,7 +486,7 @@ mod tests {
   #[tokio::test]
   async fn simplest_pipeline() {
     let counter = Counter::new();
-    let pipeline = PipelineBuilder::new().middleware(counter.clone()).build();
+    let pipeline = Builder::new().middleware(counter.clone()).build();
 
     let result = pipeline.handle("hello".into()).await;
     assert_eq!(result.unwrap(), "hello");
@@ -497,7 +497,7 @@ mod tests {
   #[tokio::test]
   async fn deep_layer_nesting() {
     let counter = Counter::new();
-    let pipeline = PipelineBuilder::new()
+    let pipeline = Builder::new()
       .middleware(counter.clone())
       .layer(GateLayer { allow: true })
       .layer(GateLayer { allow: true })
@@ -518,7 +518,7 @@ mod tests {
     let c2 = Counter::new();
     let c3 = Counter::new();
 
-    let pipeline = PipelineBuilder::new()
+    let pipeline = Builder::new()
       .middleware(c1.clone())
       .middleware(c2.clone())
       .middleware(c3.clone())

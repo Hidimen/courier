@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use event::EventBus;
-use logger::{Logger, error, warn};
+use logger::{Logger, error};
 use network::{
   KeepAlive,
   stream::{SplitStream, StreamState, WriteHalf, check_state},
@@ -13,19 +13,20 @@ use relay::Pipeline;
 
 use crate::error::DepotError;
 
-/// A server instance that pairs a [`Transport`], a [`Protocol`], and a
-/// [`Pipeline`].
+/// A server instance that pairs a [`Transport`](network::transport::Transport), a [`Protocol`](protocol::Protocol), a
+/// [`Pipeline`] and an [`EventBus`].
 ///
 /// The depot accepts connections, decodes incoming data, passes the
 /// decoded context through the middleware chain, encodes the result,
-/// and writes it back to the client.
+/// and writes it back to the client. An event system will also be setup
+/// which provide simple but compatible event bus.
 ///
 /// # Type parameters
 ///
 /// - `T` — the transport type.
 /// - `P` — the protocol type.
 /// - `M` — the composite middleware type (the chain assembled by
-///   [`Builder::build`](pipeline::Builder::build)).
+///   [`Builder::build`](relay::Builder::build)).
 pub struct Depot<T, P, M> {
   transport: T,
   protocol: Arc<P>,
@@ -102,7 +103,7 @@ where
       let (mut read, mut write) = match self.transport.accept().await {
         Ok(s) => s.split(),
         Err(e) => {
-          error!("main", "IO error: {}", e);
+          error!("IO error: {}", e);
           continue;
         },
       };
@@ -130,7 +131,7 @@ where
               match tokio::time::timeout(d, protocol.decode(&mut read)).await {
                 Ok(Ok(req)) => req,
                 Ok(Err(e)) => {
-                  warn!("main", "An error emitted by protocol decoder: {}", e);
+                  error!("An error emitted by protocol decoder: {}", e);
                   break;
                 },
                 Err(_elapsed) => break,
@@ -139,7 +140,7 @@ where
             _ => match protocol.decode(&mut read).await {
               Ok(req) => req,
               Err(e) => {
-                warn!("main", "An error emitted by protocol decoder: {}", e);
+                error!("An error emitted by protocol decoder: {}", e);
                 break;
               },
             },
@@ -151,7 +152,7 @@ where
           let resp = match pipeline.handle(req).await {
             Ok(resp) => resp,
             Err(e) => {
-              warn!("main", "An error emitted by middleware handler: {}", e);
+              error!("An error emitted by middleware handler: {}", e);
               break;
             },
           };
@@ -161,7 +162,7 @@ where
           let (frame, new_keep_alive) = match protocol.encode(resp).await {
             Ok(result) => result,
             Err(e) => {
-              warn!("main", "An error emitted by protocol encoder: {}", e);
+              error!("An error emitted by protocol encoder: {}", e);
               break;
             },
           };
@@ -169,7 +170,7 @@ where
           match write.write_all(frame.as_ref()).await {
             Ok(_) => {},
             Err(e) => {
-              warn!("main", "An error occurred when sending data: {}", e);
+              error!("An error occurred when sending data: {}", e);
               break;
             },
           }
@@ -208,7 +209,7 @@ where
       let (_, peer) = match self.transport.recv_from(&mut buf).await {
         Ok(d) => d,
         Err(e) => {
-          error!("main", "IO error: {}", e);
+          error!("IO error: {}", e);
           continue;
         },
       };
@@ -219,16 +220,16 @@ where
       let data: Result<network::Frame, DepotError> =
         match tokio::spawn(async move {
           let ctx = protocol.decode(&buf).await.map_err(|e| {
-            error!("main", "An error emitted by protocol decoder: {}", e);
+            error!("An error emitted by protocol decoder: {}", e);
             DepotError::Execution
           })?;
           let ctx = pipeline.handle(ctx).await.map_err(|e| {
-            error!("main", "An error emitted by middleware handler: {}", e);
+            error!("An error emitted by middleware handler: {}", e);
             DepotError::Execution
           })?;
           let (frame, _keep_alive) =
             protocol.encode(ctx).await.map_err(|e| {
-              error!("main", "An error emitted by protocol encoder: {}", e);
+              error!("An error emitted by protocol encoder: {}", e);
               DepotError::Execution
             })?;
           Ok(frame)
@@ -237,7 +238,7 @@ where
         {
           Ok(d) => d,
           Err(e) => {
-            error!("main", "Task terminated: {}", e);
+            error!("Task terminated: {}", e);
             continue;
           },
         };
@@ -246,7 +247,7 @@ where
         Ok(frame) => match self.transport.send_to(frame.as_ref(), peer).await {
           Ok(_) => continue,
           Err(e) => {
-            error!("main", "Failed to send data to peer: {}", e);
+            error!("Failed to send data to peer: {}", e);
             continue;
           },
         },

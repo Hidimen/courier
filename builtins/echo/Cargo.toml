@@ -6,15 +6,15 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
-[package.metadata.carrier]
-kind = "bootloader"
-entry = "boot"
+[package.metadata.carrier.enhancement]
+protocol = ""
 
 [lib]
 doc = false
 
 [dependencies]
 thiserror = "2.0.18"
+anyhow = "1.0.104"
 
 depot = { path = "../../courier_core/depot" }
 relay = { path = "../../courier_core/relay" }

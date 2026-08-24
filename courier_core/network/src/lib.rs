@@ -1,4 +1,3 @@
-// pub mod connection_pool;
 mod frame;
 mod keep_alive;
 pub mod stream;

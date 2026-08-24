@@ -5,35 +5,69 @@ use logger::Logger;
 use network::transport::Transport;
 use relay::Pipeline;
 
-use crate::{Depot, error::DepotBuildError};
+use crate::{Depot, error::BuildError};
 
 /// A builder for constructing a [`Depot`].
 ///
-/// All four fields — transport, protocol, pipeline, and logger — are
-/// required. Each setter method infers the corresponding type parameter
-/// from the argument, so no explicit type annotations are needed.
-///
-/// # Type parameters
-///
-/// - `T` — the transport type (defaults to `()` when unset).
-/// - `P` — the protocol type (defaults to `()` when unset).
-/// - `M` — the middleware type (defaults to `()` when unset).
-///
 /// # Examples
 ///
-/// ```rust,ignore
-/// use depot::DepotBuilder;
+/// ```rust
+/// use depot::Builder;
+/// use std::sync::Arc;
 ///
-/// let depot = DepotBuilder::new()
-///     .transport(my_transport)
-///     .protocol(my_protocol)
-///     .pipeline(my_pipeline)
-///     .logger(my_logger)
+/// use event::EventBus;
+///
+/// # use logger::{Builder as LoggerBuilder, Level, Logger};
+/// # use network::transport::Transport;
+/// # use relay::{Builder as RelayBuilder, Middleware, Pipeline};
+/// #
+/// # // Minimal stubs so the example runs standalone.
+/// # struct MyTransport;
+/// # impl Transport for MyTransport {
+/// #   fn bind<A: std::net::ToSocketAddrs + Send>(_addr: A) -> std::io::Result<Self> {
+/// #     Ok(Self)
+/// #   }
+/// #   fn local_addr(&self) -> std::io::Result<std::net::SocketAddr> {
+/// #     Ok("127.0.0.1:8080".parse().unwrap())
+/// #   }
+/// #   fn set_ttl(&self, _ttl: u32) -> std::io::Result<()> {
+/// #     Ok(())
+/// #   }
+/// #   fn ttl(&self) -> std::io::Result<u32> {
+/// #     Ok(100)
+/// #   }
+/// # }
+/// # struct MyProtocol;
+/// # struct MyMiddleware;
+/// # impl Middleware<()> for MyMiddleware {
+/// #   type Response = ();
+/// #   type Error = std::convert::Infallible;
+/// #   async fn handle(&self, _req: ()) -> Result<Self::Response, Self::Error> {
+/// #     Ok(())
+/// #   }
+/// # }
+/// # fn my_pipeline() -> Pipeline<MyMiddleware> {
+/// #   RelayBuilder::new().middleware(MyMiddleware).build()
+/// # }
+/// # fn my_logger() -> Arc<Logger> {
+/// #   LoggerBuilder::new()
+/// #     .capacity(128)
+/// #     .add_flow(logger::flows::ConsoleFlow::new(Level::Info))
+/// #     .build_local()
+/// #     .expect("logger")
+/// # }
+///
+/// let depot = Builder::new()
+///     .transport(MyTransport)
+///     .protocol(MyProtocol)
+///     .pipeline(my_pipeline())
+///     .logger(my_logger())
+///     .event_bus(Arc::new(EventBus::default()))
 ///     .build()
 ///     .expect("all required fields set");
 /// ```
 #[must_use = "builder methods consume self and return a new builder"]
-pub struct DepotBuilder<T = (), P = (), M = ()> {
+pub struct Builder<T = (), P = (), M = ()> {
   transport: Option<T>,
   protocol: Option<P>,
   pipeline: Option<Pipeline<M>>,
@@ -41,15 +75,15 @@ pub struct DepotBuilder<T = (), P = (), M = ()> {
   event_bus: Option<Arc<EventBus>>,
 }
 
-impl DepotBuilder {
-  /// Creates a new [`DepotBuilder`] with no fields set.
+impl Builder {
+  /// Creates a new [`Builder`] with no fields set.
   ///
   /// # Examples
   ///
-  /// ```rust,ignore
-  /// use depot::DepotBuilder;
+  /// ```rust
+  /// use depot::Builder;
   ///
-  /// let builder = DepotBuilder::new();
+  /// let builder = Builder::new();
   /// ```
   pub fn new() -> Self {
     Self {
@@ -62,27 +96,40 @@ impl DepotBuilder {
   }
 }
 
-impl Default for DepotBuilder {
-  /// Creates a default [`DepotBuilder`] with no fields set.
+impl Default for Builder {
+  /// Creates a default [`Builder`] with no fields set.
   fn default() -> Self {
     Self::new()
   }
 }
 
-impl<T: Transport, P, M> DepotBuilder<T, P, M> {
+impl<T: Transport, P, M> Builder<T, P, M> {
   /// Sets the protocol for the [`Depot`], inferring `P` from the
   /// argument.
   ///
+  /// Note that a transport must already be set — the `protocol`
+  /// method is only available once the builder has a [`Transport`].
+  ///
   /// # Examples
   ///
-  /// ```rust,ignore
-  /// use depot::DepotBuilder;
+  /// ```rust
+  /// use depot::Builder;
   ///
-  /// let builder = DepotBuilder::new()
-  ///     .protocol(my_protocol);
+  /// # struct MyTransport;
+  /// # impl network::transport::Transport for MyTransport {
+  /// #   fn bind<A: std::net::ToSocketAddrs + Send>(_addr: A) -> std::io::Result<Self> { Ok(Self) }
+  /// #   fn local_addr(&self) -> std::io::Result<std::net::SocketAddr> { Ok("127.0.0.1:8080".parse().unwrap()) }
+  /// #   fn set_ttl(&self, _ttl: u32) -> std::io::Result<()> { Ok(()) }
+  /// #   fn ttl(&self) -> std::io::Result<u32> { Ok(100) }
+  /// # }
+  /// # struct MyProtocol;
+  ///
+  /// let builder = Builder::new()
+  ///     .transport(MyTransport)
+  ///     .protocol(MyProtocol);
   /// ```
-  pub fn protocol<P2>(self, protocol: P2) -> DepotBuilder<T, P2, M> {
-    DepotBuilder {
+  pub fn protocol<P2>(self, protocol: P2) -> Builder<T, P2, M> {
+    Builder {
       transport: self.transport,
       protocol: Some(protocol),
       pipeline: self.pipeline,
@@ -92,20 +139,28 @@ impl<T: Transport, P, M> DepotBuilder<T, P, M> {
   }
 }
 
-impl<T, P, M> DepotBuilder<T, P, M> {
+impl<T, P, M> Builder<T, P, M> {
   /// Sets the transport for the [`Depot`], inferring `T` from the
   /// argument.
   ///
   /// # Examples
   ///
-  /// ```rust,ignore
-  /// use depot::DepotBuilder;
+  /// ```rust
+  /// use depot::Builder;
   ///
-  /// let builder = DepotBuilder::new()
-  ///     .transport(my_transport);
+  /// # struct MyTransport;
+  /// # impl network::transport::Transport for MyTransport {
+  /// #   fn bind<A: std::net::ToSocketAddrs + Send>(_addr: A) -> std::io::Result<Self> { Ok(Self) }
+  /// #   fn local_addr(&self) -> std::io::Result<std::net::SocketAddr> { Ok("127.0.0.1:8080".parse().unwrap()) }
+  /// #   fn set_ttl(&self, _ttl: u32) -> std::io::Result<()> { Ok(()) }
+  /// #   fn ttl(&self) -> std::io::Result<u32> { Ok(100) }
+  /// # }
+  ///
+  /// let builder = Builder::new()
+  ///     .transport(MyTransport);
   /// ```
-  pub fn transport<T2>(self, transport: T2) -> DepotBuilder<T2, P, M> {
-    DepotBuilder {
+  pub fn transport<T2>(self, transport: T2) -> Builder<T2, P, M> {
+    Builder {
       transport: Some(transport),
       protocol: self.protocol,
       pipeline: self.pipeline,
@@ -119,14 +174,25 @@ impl<T, P, M> DepotBuilder<T, P, M> {
   ///
   /// # Examples
   ///
-  /// ```rust,ignore
-  /// use depot::DepotBuilder;
+  /// ```rust
+  /// use depot::Builder;
   ///
-  /// let builder = DepotBuilder::new()
-  ///     .pipeline(my_pipeline);
+  /// # use relay::{Builder as RelayBuilder, Middleware, Pipeline};
+  /// # struct MyMiddleware;
+  /// # impl Middleware<()> for MyMiddleware {
+  /// #   type Response = ();
+  /// #   type Error = std::convert::Infallible;
+  /// #   async fn handle(&self, _req: ()) -> Result<Self::Response, Self::Error> { Ok(()) }
+  /// # }
+  /// # fn my_pipeline() -> Pipeline<MyMiddleware> {
+  /// #   RelayBuilder::new().middleware(MyMiddleware).build()
+  /// # }
+  ///
+  /// let builder = Builder::new()
+  ///     .pipeline(my_pipeline());
   /// ```
-  pub fn pipeline<M2>(self, pipeline: Pipeline<M2>) -> DepotBuilder<T, P, M2> {
-    DepotBuilder {
+  pub fn pipeline<M2>(self, pipeline: Pipeline<M2>) -> Builder<T, P, M2> {
+    Builder {
       transport: self.transport,
       protocol: self.protocol,
       pipeline: Some(pipeline),
@@ -139,11 +205,21 @@ impl<T, P, M> DepotBuilder<T, P, M> {
   ///
   /// # Examples
   ///
-  /// ```rust,ignore
-  /// use depot::DepotBuilder;
+  /// ```rust
+  /// use depot::Builder;
+  /// use std::sync::Arc;
   ///
-  /// let builder = DepotBuilder::new()
-  ///     .logger(my_logger);
+  /// # use logger::{Builder as LoggerBuilder, Level, Logger};
+  /// # fn my_logger() -> Arc<Logger> {
+  /// #   LoggerBuilder::new()
+  /// #     .capacity(128)
+  /// #     .add_flow(logger::flows::ConsoleFlow::new(Level::Info))
+  /// #     .build_local()
+  /// #     .expect("logger")
+  /// # }
+  ///
+  /// let builder = Builder::new()
+  ///     .logger(my_logger());
   /// ```
   pub fn logger(mut self, logger: Arc<Logger>) -> Self {
     self.logger = Some(logger);
@@ -154,11 +230,14 @@ impl<T, P, M> DepotBuilder<T, P, M> {
   ///
   /// # Examples
   ///
-  /// ```rust,ignore
-  /// use depot::DepotBuilder;
+  /// ```rust
+  /// use depot::Builder;
+  /// use std::sync::Arc;
   ///
-  /// let builder = DepotBuilder::new()
-  ///     .event_bus(my_event_bus);
+  /// use event::EventBus;
+  ///
+  /// let builder = Builder::new()
+  ///     .event_bus(Arc::new(EventBus::default()));
   /// ```
   pub fn event_bus(mut self, event_bus: Arc<EventBus>) -> Self {
     self.event_bus = Some(event_bus);
@@ -169,29 +248,66 @@ impl<T, P, M> DepotBuilder<T, P, M> {
   ///
   /// # Errors
   ///
-  /// Returns [`DepotBuildError`] if any required field — transport,
-  /// protocol, pipeline, or logger — has not been set.
+  /// Returns [`BuildError`] if any required field — transport,
+  /// protocol, pipeline, logger, or event bus — has not been set.
   ///
   /// # Examples
   ///
-  /// ```rust,ignore
-  /// use depot::DepotBuilder;
+  /// ```rust
+  /// use depot::Builder;
+  /// use std::sync::Arc;
   ///
-  /// let depot = DepotBuilder::new()
-  ///     .transport(my_transport)
-  ///     .protocol(my_protocol)
-  ///     .pipeline(my_pipeline)
-  ///     .logger(my_logger)
+  /// use event::EventBus;
+  ///
+  /// # use logger::{Builder as LoggerBuilder, Level, Logger};
+  /// # use network::transport::Transport;
+  /// # use relay::{Builder as RelayBuilder, Middleware, Pipeline};
+  /// #
+  /// # struct MyTransport;
+  /// # impl Transport for MyTransport {
+  /// #   fn bind<A: std::net::ToSocketAddrs + Send>(_addr: A) -> std::io::Result<Self> { Ok(Self) }
+  /// #   fn local_addr(&self) -> std::io::Result<std::net::SocketAddr> { Ok("127.0.0.1:8080".parse().unwrap()) }
+  /// #   fn set_ttl(&self, _ttl: u32) -> std::io::Result<()> { Ok(()) }
+  /// #   fn ttl(&self) -> std::io::Result<u32> { Ok(100) }
+  /// # }
+  /// # struct MyProtocol;
+  /// # struct MyMiddleware;
+  /// # impl Middleware<()> for MyMiddleware {
+  /// #   type Response = ();
+  /// #   type Error = std::convert::Infallible;
+  /// #   async fn handle(&self, _req: ()) -> Result<Self::Response, Self::Error> { Ok(()) }
+  /// # }
+  /// # fn my_pipeline() -> Pipeline<MyMiddleware> {
+  /// #   RelayBuilder::new().middleware(MyMiddleware).build()
+  /// # }
+  /// # fn my_logger() -> Arc<Logger> {
+  /// #   LoggerBuilder::new()
+  /// #     .capacity(128)
+  /// #     .add_flow(logger::flows::ConsoleFlow::new(Level::Info))
+  /// #     .build_local()
+  /// #     .expect("logger")
+  /// # }
+  ///
+  /// let depot = Builder::new()
+  ///     .transport(MyTransport)
+  ///     .protocol(MyProtocol)
+  ///     .pipeline(my_pipeline())
+  ///     .logger(my_logger())
+  ///     .event_bus(Arc::new(EventBus::default()))
   ///     .build()
   ///     .expect("all required fields set");
+  ///
+  /// // Omitting a required field fails the build.
+  /// let result = Builder::new().transport(MyTransport).build();
+  /// assert!(result.is_err());
   /// ```
-  pub fn build(self) -> Result<Depot<T, P, M>, DepotBuildError> {
+  pub fn build(self) -> Result<Depot<T, P, M>, BuildError> {
     Ok(Depot::new(
-      self.transport.ok_or(DepotBuildError::MissingTransport)?,
-      self.protocol.ok_or(DepotBuildError::MissingProtocol)?,
-      self.pipeline.ok_or(DepotBuildError::MissingPipeline)?,
-      self.logger.ok_or(DepotBuildError::MissingLogger)?,
-      self.event_bus.ok_or(DepotBuildError::MissingEventBus)?,
+      self.transport.ok_or(BuildError::MissingTransport)?,
+      self.protocol.ok_or(BuildError::MissingProtocol)?,
+      self.pipeline.ok_or(BuildError::MissingPipeline)?,
+      self.logger.ok_or(BuildError::MissingLogger)?,
+      self.event_bus.ok_or(BuildError::MissingEventBus)?,
     ))
   }
 }
@@ -267,8 +383,8 @@ mod tests {
 
   /// A stub pipeline for testing.
   fn stub_pipeline() -> Pipeline<StubMiddleware> {
-    use relay::PipelineBuilder;
-    PipelineBuilder::new().middleware(StubMiddleware).build()
+    use relay::Builder;
+    Builder::new().middleware(StubMiddleware).build()
   }
 
   /// A stub event bus for testing.
@@ -280,7 +396,7 @@ mod tests {
 
   #[test]
   fn build_with_all_fields_succeeds() {
-    let depot = DepotBuilder::new()
+    let depot = Builder::new()
       .transport(StubTransport)
       .protocol(StubProtocol)
       .pipeline(stub_pipeline())
@@ -293,7 +409,7 @@ mod tests {
 
   #[test]
   fn build_without_protocol_fails() {
-    let result = DepotBuilder::new()
+    let result = Builder::new()
       .transport(StubTransport)
       .pipeline(stub_pipeline())
       .logger(stub_logger())
@@ -308,7 +424,7 @@ mod tests {
 
   #[test]
   fn build_without_pipeline_fails() {
-    let result = DepotBuilder::new()
+    let result = Builder::new()
       .transport(StubTransport)
       .protocol(StubProtocol)
       .logger(stub_logger())
@@ -323,7 +439,7 @@ mod tests {
 
   #[test]
   fn build_without_logger_fails() {
-    let result = DepotBuilder::new()
+    let result = Builder::new()
       .transport(StubTransport)
       .protocol(StubProtocol)
       .pipeline(stub_pipeline())
@@ -338,7 +454,7 @@ mod tests {
 
   #[test]
   fn build_without_event_bus_fails() {
-    let result = DepotBuilder::new()
+    let result = Builder::new()
       .transport(StubTransport)
       .protocol(StubProtocol)
       .logger(stub_logger())
@@ -353,6 +469,6 @@ mod tests {
 
   #[test]
   fn default_builder_is_empty() {
-    let _builder = DepotBuilder::default();
+    let _builder = Builder::default();
   }
 }

@@ -4,8 +4,8 @@
 # Build Cache
 /target
 output
-build/__pycache__
-build_cache
+build/target
+.courier
 
 # Editor's settings
 .vscode

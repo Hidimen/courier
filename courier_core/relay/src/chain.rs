@@ -8,7 +8,7 @@ use crate::Middleware;
 /// chain if you need conditional execution.
 ///
 /// Constructed by
-/// [`PipelineBuilder::middleware`](crate::PipelineBuilder::middleware) —
+/// [`Builder::middleware`](crate::Builder::middleware) —
 /// users should not create this directly.
 pub struct Chain<Left, Right>(pub(crate) Left, pub(crate) Right);
 

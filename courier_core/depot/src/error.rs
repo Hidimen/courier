@@ -24,12 +24,12 @@ pub enum DepotError {
 }
 
 /// Errors that can occur while building a [`Depot`](crate::Depot) via
-/// [`DepotBuilder`](crate::DepotBuilder).
+/// [`Builder`](crate::Builder).
 ///
 /// Each variant indicates a required field that was not set before
-/// [`build`](crate::DepotBuilder::build) was called.
+/// [`build`](crate::Builder::build) was called.
 #[derive(Debug, Error)]
-pub enum DepotBuildError {
+pub enum BuildError {
   /// Transport was not set.
   #[error("transport is required but was not set")]
   MissingTransport,

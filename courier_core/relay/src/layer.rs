@@ -121,7 +121,7 @@
 /// Middleware appends in **FIFO** order:
 ///
 /// ```rust,no_run
-/// use relay::PipelineBuilder;
+/// use relay::Builder;
 ///
 /// # struct Handler;
 /// # #[derive(Debug)] struct AppError;
@@ -152,7 +152,7 @@
 /// #   async fn handle(&self, r: Req) -> Result<Self::Response, Self::Error> { self.inner.handle(r).await }
 /// # }
 ///
-/// let pipeline = PipelineBuilder::new()
+/// let pipeline = Builder::new()
 ///   .middleware(Handler)                        // innermost
 ///   .layer(AuthLayer)                           // wraps Handler
 ///   .layer(TimingLayer)                         // outermost

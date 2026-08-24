@@ -3,7 +3,13 @@ use std::path::PathBuf;
 use gix::head::Kind;
 
 fn main() -> anyhow::Result<()> {
-  let repo = gix::open(PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().unwrap().parent().unwrap())?;
+  let repo = gix::open(
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+      .parent()
+      .unwrap()
+      .parent()
+      .unwrap(),
+  )?;
   let commit_id = repo.head_id()?;
 
   let head = repo.head()?;

@@ -3,7 +3,7 @@ use crate::Middleware;
 /// An assembled pipeline ready to handle requests.
 ///
 /// Created via
-/// [`PipelineBuilder::build`](crate::PipelineBuilder::build) — users
+/// [`Builder::build`](crate::Builder::build) — users
 /// cannot construct this directly. Call [`handle`](Self::handle) to send
 /// a request through every middleware in sequence.
 ///
@@ -15,14 +15,29 @@ use crate::Middleware;
 ///
 /// # Examples
 ///
-/// ```rust,ignore
-/// use relay::PipelineBuilder;
+/// ```rust
+/// use relay::{Builder, Middleware};
 ///
-/// let pipeline = PipelineBuilder::new()
-///   .middleware(core_service)
+/// struct CoreService;
+///
+/// impl<Req: Send> Middleware<Req> for CoreService {
+///   type Response = Req;
+///   type Error = std::convert::Infallible;
+///
+///   async fn handle(&self, req: Req) -> Result<Self::Response, Self::Error> {
+///     Ok(req)
+///   }
+/// }
+///
+/// # #[tokio::main]
+/// # async fn main() {
+/// let pipeline = Builder::new()
+///   .middleware(CoreService)
 ///   .build();
 ///
-/// let resp = pipeline.handle(request).await?;
+/// let resp = pipeline.handle("hello").await.unwrap();
+/// assert_eq!(resp, "hello");
+/// # }
 /// ```
 pub struct Pipeline<M> {
   pub(crate) chain: M,

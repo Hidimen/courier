@@ -1,4 +1,4 @@
-use depot::DepotBuilder;
+use depot::Builder;
 use logger::{
   Level, PrettyFormatter, flows::ConsoleFlow, info,
 };
@@ -8,7 +8,6 @@ use network::{
   transport::{Transport, tcp::TcpTransport},
 };
 use protocol::{Protocol, StreamProtocol};
-use relay::PipelineBuilder;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -53,8 +52,8 @@ impl StreamProtocol<TcpTransport> for EchoProtocol {
   }
 }
 
-pub async fn boot() {
-  let pipeline = PipelineBuilder::default()
+pub async fn boot() -> anyhow::Result<()> {
+  let pipeline = relay::Builder::default()
     .then(|request: Request| Response(request.0))
     .build();
 
@@ -70,7 +69,7 @@ pub async fn boot() {
 
   info!("Server is running on port 8080.");
 
-  let mut server = DepotBuilder::default()
+  let mut server = Builder::default()
     .logger(logger)
     .pipeline(pipeline)
     .transport(transport)
@@ -79,5 +78,6 @@ pub async fn boot() {
     .build()
     .unwrap();
 
-  let _ = server.run_stream().await;
+  server.run_stream().await;
+  Ok(())
 }

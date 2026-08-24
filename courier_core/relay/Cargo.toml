@@ -11,4 +11,4 @@ network = { path = "../network" }
 protocol = { path = "../protocol" }
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["macros", "rt"] }
+tokio = { workspace = true, features = ["macros", "rt", "time"] }

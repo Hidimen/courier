@@ -15,9 +15,9 @@ pub struct NonEmpty;
 ///
 /// | State | Available methods | Semantics |
 /// |---|---|---|
-/// | [`Empty`] | [`middleware`](PipelineBuilder::middleware),
-/// [`then`](PipelineBuilder::then) | Stores the first element |
-/// | [`NonEmpty`] | All methods + [`build`](PipelineBuilder::build) |
+/// | [`Empty`] | [`middleware`](Builder::middleware),
+/// [`then`](Builder::then) | Stores the first element |
+/// | [`NonEmpty`] | All methods + [`build`](Builder::build) |
 /// Everything is wrapped in [`Chain`] (or [`Layer`] for
 /// `map_err`/`layer`) |
 ///
@@ -29,61 +29,59 @@ pub struct NonEmpty;
 /// | `.then(F)` | [`Chain`]`<M, `[`Then`]`<F, M::Error>>` | FIFO |
 /// | `.layer(L)` | `L::Output` | LIFO |
 /// | `.map_err(F)` | [`MapErrLayer`] | LIFO |
-pub struct PipelineBuilder<State, M = ()> {
+pub struct Builder<State, M = ()> {
   chain: M,
   _state: PhantomData<State>,
 }
 
-// ── Empty state ────────────────────────────────────────────────────
-
-impl PipelineBuilder<Empty> {
-  /// Creates a new [`PipelineBuilder`].
+impl Builder<Empty> {
+  /// Creates a new [`Builder`].
   pub fn new() -> Self {
-    PipelineBuilder { chain: (), _state: PhantomData }
+    Builder { chain: (), _state: PhantomData }
   }
 }
 
-impl Default for PipelineBuilder<Empty> {
+impl Default for Builder<Empty> {
   fn default() -> Self {
     Self::new()
   }
 }
 
-impl PipelineBuilder<Empty> {
+impl Builder<Empty> {
   /// Adds the first middleware to the pipeline.
   ///
   /// Transitions to [`NonEmpty`].
-  pub fn middleware<M>(self, m: M) -> PipelineBuilder<NonEmpty, M> {
-    PipelineBuilder { chain: m, _state: PhantomData }
+  pub fn middleware<M>(self, m: M) -> Builder<NonEmpty, M> {
+    Builder { chain: m, _state: PhantomData }
   }
 
   /// Adds a [`Then`] as the first element of the pipeline.
   ///
   /// The closure `f` maps the incoming request to a new type.
   /// Transitions to [`NonEmpty`].
-  pub fn then<F, Req, B>(self, f: F) -> PipelineBuilder<NonEmpty, Then<F>>
+  pub fn then<F, Req, B>(self, f: F) -> Builder<NonEmpty, Then<F>>
   where
     Req: Send + 'static,
     F: Fn(Req) -> B + Send + Sync + 'static,
     B: Send + 'static,
   {
-    PipelineBuilder { chain: Then::new(f), _state: PhantomData }
+    Builder { chain: Then::new(f), _state: PhantomData }
   }
 }
 
 // ── NonEmpty state ─────────────────────────────────────────────────
 
-impl<M> PipelineBuilder<NonEmpty, M> {
+impl<M> Builder<NonEmpty, M> {
   /// Appends `next` via [`Chain`].
   pub fn middleware<Next, Req>(
     self, next: Next,
-  ) -> PipelineBuilder<NonEmpty, Chain<M, Next>>
+  ) -> Builder<NonEmpty, Chain<M, Next>>
   where
     M: Middleware<Req>,
     Next: Middleware<M::Response>,
     Next::Error: Into<M::Error>,
   {
-    PipelineBuilder { chain: Chain(self.chain, next), _state: PhantomData }
+    Builder { chain: Chain(self.chain, next), _state: PhantomData }
   }
 
   /// Transforms the current chain's response via
@@ -93,28 +91,28 @@ impl<M> PipelineBuilder<NonEmpty, M> {
   /// [`Then`] borrows `M::Error` so chaining always composes.
   pub fn then<F, B, Req>(
     self, f: F,
-  ) -> PipelineBuilder<NonEmpty, Chain<M, Then<F, M::Error>>>
+  ) -> Builder<NonEmpty, Chain<M, Then<F, M::Error>>>
   where
     M: Middleware<Req>,
     F: Fn(M::Response) -> B + Send + Sync + 'static,
     B: Send + 'static,
   {
     let then = Then(f, PhantomData);
-    PipelineBuilder { chain: Chain(self.chain, then), _state: PhantomData }
+    Builder { chain: Chain(self.chain, then), _state: PhantomData }
   }
 
   /// Wraps the current chain with a [`Layer`].
-  pub fn layer<L>(self, l: L) -> PipelineBuilder<NonEmpty, L::Output>
+  pub fn layer<L>(self, l: L) -> Builder<NonEmpty, L::Output>
   where
     L: Layer<M>,
   {
-    PipelineBuilder { chain: l.layer(self.chain), _state: PhantomData }
+    Builder { chain: l.layer(self.chain), _state: PhantomData }
   }
 
   /// Wraps the current chain with a [`MapErrLayer`].
   pub fn map_err<F, E2, Req>(
     self, f: F,
-  ) -> PipelineBuilder<NonEmpty, MapErr<M, F>>
+  ) -> Builder<NonEmpty, MapErr<M, F>>
   where
     M: Middleware<Req>,
     F: Fn(M::Error) -> E2 + Send + Sync + 'static,

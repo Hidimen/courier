@@ -107,7 +107,7 @@ impl Logger {
               match flows.println(format.format(data)) {
                 Ok(_) => continue,
                 Err(HandlingKind::Fuse(reason)) => {
-                  panic!("Logger encountered a unrecoverable error: {}", reason)
+                  panic!("Logger encountered an unrecoverable error: {}", reason)
                 },
                 Err(HandlingKind::Ignore) => continue,
               }
@@ -160,6 +160,29 @@ impl Logger {
       Some(s) => s.clone(),
       None => panic!("Logger not initialized"),
     }
+  }
+
+  /// Returns a clone of the globally-installed logger if instance exists.
+  ///
+  /// # Returns
+  /// `Option<Arc<Logger>>` is returned when instance exists, and otherwise, `None` is returned.
+  ///
+  /// # Example
+  ///
+  /// ```rust
+  /// use logger::{Builder, Level, Logger};
+  ///
+  /// Builder::new()
+  ///     .capacity(128)
+  ///     .add_flow(logger::flows::ConsoleFlow::new(Level::Info))
+  ///     .build()
+  ///     .unwrap();
+  ///
+  /// let logger = Logger::try_get_instance();
+  /// logger.unwrap().info("Hello!".into(), "my_app");
+  /// ```
+  pub fn try_get_instance() -> Option<Arc<Self>> {
+    LOGGER.get().cloned()
   }
 
   fn log(&self, record: Record) {

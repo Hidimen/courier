@@ -258,7 +258,7 @@ pub enum StreamState {
 ///
 /// # Examples
 ///
-/// ```rust,ignore
+/// ```rust
 /// use network::stream::{check_state, ReadHalf, StreamState, WriteHalf};
 ///
 /// # async fn example(read: &mut impl ReadHalf, write: &mut impl WriteHalf) {

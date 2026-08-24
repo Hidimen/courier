@@ -12,9 +12,9 @@ use crate::{Layer, Middleware};
 ///
 /// | Created via | `E` |
 /// |---|---|
-/// | [`PipelineBuilder::then`](crate::PipelineBuilder::then) on
+/// | [`Builder::then`](crate::Builder::then) on
 /// [`Empty`](crate::Empty) | [`Infallible`] |
-/// | [`PipelineBuilder::then`](crate::PipelineBuilder::then) on
+/// | [`Builder::then`](crate::Builder::then) on
 /// [`NonEmpty`](crate::NonEmpty) | `M::Error` |
 pub struct Then<F, E = Infallible>(pub(crate) F, pub(crate) PhantomData<E>);
 

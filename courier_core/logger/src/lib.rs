@@ -2,7 +2,7 @@
 //!
 //! This crate provides a thread-safe logger built around a **flow** abstraction,
 //! where each flow represents a destination for log output (e.g., console,
-//! file, or custom). Flows are composable via the [`Stack`] type, allowing
+//! file, or custom). Flows are composable via the [`Stack`](flow::Stack) type, allowing
 //! multiple destinations to be chained together.
 //!
 //! Log records pass through a user-configurable [`Format`] step before being
@@ -49,6 +49,7 @@ mod format;
 mod level;
 mod logger;
 mod record;
+mod config;
 #[macro_use]
 pub mod macros;
 
@@ -59,3 +60,4 @@ pub use format::*;
 pub use level::Level;
 pub use logger::Logger;
 pub use record::Record;
+pub use config::Config;

@@ -1,2 +1,3 @@
-// Re-exports for builtin modules — @generated
-include!("generated.rs");
+mod builtin_module;
+
+pub use builtin_module::*;

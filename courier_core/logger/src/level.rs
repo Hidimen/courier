@@ -1,5 +1,7 @@
 use std::fmt::Display;
 
+use marquage::{Generate, Parse};
+
 /// Represents the severity level of a log record.
 ///
 /// The levels are ordered from least to most severe: `Trace < Debug < Info
@@ -17,12 +19,16 @@ use std::fmt::Display;
 /// assert!(Level::Trace < Level::Info);
 /// assert_eq!(Level::Error.to_string(), "ERROR");
 /// ```
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+#[derive(
+  Debug, Default, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Parse, Generate,
+)]
+#[marquage(rename_all = "lowercase")]
 pub enum Level {
   /// The finest-grained, most verbose log level.
   Trace,
   /// Diagnostic information useful for debugging.
   Debug,
+  #[default]
   /// General informational messages.
   Info,
   /// Potential issues that do not prevent the application from running.

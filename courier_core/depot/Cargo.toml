@@ -9,6 +9,7 @@ license.workspace = true
 [dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread"] }
 thiserror.workspace = true
+marquage.workspace = true
 
 network = { path = "../network" }
 relay = { path = "../relay" }
