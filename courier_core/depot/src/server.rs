@@ -4,12 +4,13 @@ use event::EventBus;
 use logger::{Logger, error};
 use network::{
   KeepAlive,
-  stream::{SplitStream, StreamState, WriteHalf, check_state},
+  stream::{SplitStream, WriteHalf, check_state},
   transport::{DatagramTransport, StreamTransport},
 };
 use protocol::{DatagramProtocol, StreamProtocol};
 use relay::Middleware;
 use relay::Pipeline;
+use tokio_util::sync::CancellationToken;
 
 use crate::error::DepotError;
 
@@ -33,6 +34,7 @@ pub struct Depot<T, P, M> {
   pipeline: Arc<Pipeline<M>>,
   logger: Arc<Logger>,
   event_bus: Arc<EventBus>,
+  cancellation_token: CancellationToken,
 }
 
 impl<T, P, M> Depot<T, P, M> {
@@ -48,6 +50,7 @@ impl<T, P, M> Depot<T, P, M> {
       pipeline: Arc::new(pipeline),
       logger,
       event_bus,
+      cancellation_token: CancellationToken::new(),
     }
   }
 
@@ -69,6 +72,10 @@ impl<T, P, M> Depot<T, P, M> {
   /// Returns a cloned event_bus.
   pub fn event_bus(&self) -> Arc<EventBus> {
     self.event_bus.clone()
+  }
+
+  pub fn cancellation_token(&self) -> CancellationToken {
+    self.cancellation_token.clone()
   }
 }
 
@@ -99,8 +106,15 @@ where
   /// - [`KeepAlive::Pending`] — treated as [`KeepAlive::Keep`]; the
   ///   protocol hasn't decided yet.
   pub async fn run_stream(&mut self) {
+    let cancellation_token = self.cancellation_token.child_token();
+
     loop {
-      let (mut read, mut write) = match self.transport.accept().await {
+      let accept_result = tokio::select! {
+        result = self.transport.accept() => result,
+        _ = cancellation_token.cancelled() => break
+      };
+
+      let (mut read, mut write) = match accept_result {
         Ok(s) => s.split(),
         Err(e) => {
           error!("IO error: {}", e);
@@ -110,18 +124,16 @@ where
       let protocol = self.protocol.clone();
       let pipeline = self.pipeline.clone();
 
+      let child_token = cancellation_token.child_token();
       tokio::spawn(async move {
         let mut request_count: usize = 0;
         let mut keep_alive = KeepAlive::Pending;
 
         loop {
-          // Probe the connection state before attempting a decode.
-          // If the peer has already closed or the stream is broken,
-          // stop this connection handler.
-          match check_state(&mut read, &mut write).await {
-            StreamState::Open | StreamState::HalfOpen => {},
-            _ => break,
-          }
+          tokio::select! {
+            state = check_state(&mut read, &mut write) => state,
+            _ = child_token.cancelled() => break
+          };
 
           // Decode the next request. When the keep-alive directive is
           // `Timeout`, wrap the decode future so the task does not
@@ -196,7 +208,7 @@ where
   P: DatagramProtocol<T>,
   M: Middleware<P::Request, Response = P::Response> + Send + Sync + 'static,
   M::Error: Send + 'static,
-  P::Error: Into<M::Error>,
+  P::Error: Send + Sync,
 {
   /// Runs the datagram server loop.
   ///
@@ -204,9 +216,14 @@ where
   /// decoded context through the middleware chain, encodes the result,
   /// and sends it back to the peer.
   pub async fn run_datagram(&mut self) {
+    let cancellation_token = self.cancellation_token.child_token();
     loop {
       let mut buf = [0u8; 1024];
-      let (_, peer) = match self.transport.recv_from(&mut buf).await {
+      let recv_result = tokio::select! {
+        result = self.transport.recv_from(&mut buf) => result,
+        _ = cancellation_token.cancelled() => break
+      };
+      let (_, peer) = match recv_result {
         Ok(d) => d,
         Err(e) => {
           error!("IO error: {}", e);

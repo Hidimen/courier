@@ -7,12 +7,14 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
-tokio = { workspace = true, features = ["rt-multi-thread"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "signal"] }
 thiserror.workspace = true
 marquage.workspace = true
+anyhow.workspace = true
 
 network = { path = "../network" }
 relay = { path = "../relay" }
 protocol = { path = "../protocol" }
 logger = { path = "../logger" }
 event = { path = "../event" }
+tokio-util = "0.7.19"

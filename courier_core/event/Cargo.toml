@@ -13,3 +13,4 @@ tokio = { workspace = true, features = ["macros"] }
 crossbeam-channel.workspace = true
 thiserror.workspace = true
 dashmap = "6.2.1"
+marquage.workspace = true

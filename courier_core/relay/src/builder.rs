@@ -110,9 +110,7 @@ impl<M> Builder<NonEmpty, M> {
   }
 
   /// Wraps the current chain with a [`MapErrLayer`].
-  pub fn map_err<F, E2, Req>(
-    self, f: F,
-  ) -> Builder<NonEmpty, MapErr<M, F>>
+  pub fn map_err<F, E2, Req>(self, f: F) -> Builder<NonEmpty, MapErr<M, F>>
   where
     M: Middleware<Req>,
     F: Fn(M::Error) -> E2 + Send + Sync + 'static,

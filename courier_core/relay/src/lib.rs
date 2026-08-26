@@ -43,7 +43,7 @@ mod middleware;
 mod pipeline;
 mod wrappers;
 
-pub use builder::{Empty, NonEmpty, Builder};
+pub use builder::{Builder, Empty, NonEmpty};
 pub use chain::Chain;
 pub use layer::Layer;
 pub use middleware::Middleware;
@@ -360,10 +360,8 @@ mod tests {
       }
     }
 
-    let pipeline = Builder::new()
-      .middleware(ReturnNum)
-      .then(|n: i32| n.to_string())
-      .build();
+    let pipeline =
+      Builder::new().middleware(ReturnNum).then(|n: i32| n.to_string()).build();
 
     let result: Result<String, TestError> = pipeline.handle(()).await;
     assert_eq!(result.unwrap(), "42");

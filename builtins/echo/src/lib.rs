@@ -1,23 +1,28 @@
-use depot::Builder;
-use logger::{
-  Level, PrettyFormatter, flows::ConsoleFlow, info,
-};
+use depot::{StreamProvider, self};
 use network::{
   Frame, KeepAlive,
   stream::ReadHalf,
-  transport::{Transport, tcp::TcpTransport},
+  transport::tcp::TcpTransport,
 };
 use protocol::{Protocol, StreamProtocol};
 use thiserror::Error;
 
+/// Error type for the echo protocol.
 #[derive(Error, Debug)]
 pub enum EchoError {
+  /// An I/O error from the underlying stream.
   #[error("IO Error")]
   IOError(#[from] std::io::Error),
 }
 
+/// The echo protocol.
+#[derive(Clone, Copy)]
 pub struct EchoProtocol;
+
+/// A request carrying the received bytes as a string.
 pub struct Request(pub String);
+
+/// A response carrying the request payload back to the peer.
 pub struct Response(pub String);
 
 impl Protocol for EchoProtocol {
@@ -36,8 +41,7 @@ impl Protocol for EchoProtocol {
 
 impl StreamProtocol<TcpTransport> for EchoProtocol {
   async fn decode(
-    &self,
-    read_half: &mut <TcpTransport as network::transport::StreamTransport>::ReadHalf,
+    &self, read_half: &mut <TcpTransport as network::transport::StreamTransport>::ReadHalf,
   ) -> Result<Self::Request, Self::Error> {
     let mut buf = [0u8; 1024];
     let _ = read_half.read(&mut buf).await?;
@@ -52,32 +56,27 @@ impl StreamProtocol<TcpTransport> for EchoProtocol {
   }
 }
 
-pub async fn boot() -> anyhow::Result<()> {
-  let pipeline = relay::Builder::default()
-    .then(|request: Request| Response(request.0))
-    .build();
+/// The echo builtin parts: a protocol plus a middleware pipeline.
+///
+/// The transport, logger and event bus are created by the framework from
+/// the server [`Config`](depot::config::Config); this type only declares
+/// the transport its protocol runs over and supplies the pipeline.
+#[derive(Default, Clone, Copy)]
+pub struct EchoProvider;
 
-  let transport = TcpTransport::bind("0.0.0.0:8080").unwrap();
-  let protocol = EchoProtocol;
-  let logger = logger::Builder::default()
-    .capacity(1024)
-    .format(PrettyFormatter)
-    .add_flow(ConsoleFlow::new(Level::Trace))
-    .build()
-    .unwrap();
-  let event_bus = event::EventBus::new(1024).install();
+impl StreamProvider for EchoProvider {
+  type Transport = TcpTransport;
+  type Protocol = EchoProtocol;
 
-  info!("Server is running on port 8080.");
+  fn protocol(&self) -> Self::Protocol {
+    EchoProtocol
+  }
 
-  let mut server = Builder::default()
-    .logger(logger)
-    .pipeline(pipeline)
-    .transport(transport)
-    .protocol(protocol)
-    .event_bus(event_bus)
-    .build()
-    .unwrap();
-
-  server.run_stream().await;
-  Ok(())
+  fn pipeline(
+    &self,
+  ) -> relay::Pipeline<impl relay::Middleware<Request, Response = Response>> {
+    relay::Builder::default()
+      .then(|request: Request| Response(request.0))
+      .build()
+  }
 }

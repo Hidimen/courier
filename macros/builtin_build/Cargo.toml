@@ -1,5 +1,5 @@
 [package]
-name = "macro_build"
+name = "macro_builtin_build"
 description = "Provide proc macro for building"
 version.workspace = true
 edition.workspace = true

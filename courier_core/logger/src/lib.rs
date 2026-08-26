@@ -42,6 +42,7 @@
 //!   required.
 
 mod builder;
+mod config;
 mod error;
 pub mod flow;
 pub mod flows;
@@ -49,15 +50,14 @@ mod format;
 mod level;
 mod logger;
 mod record;
-mod config;
 #[macro_use]
 pub mod macros;
 
 pub use builder::{Builder, Empty, NonEmpty};
+pub use config::*;
 pub use error::HandlingKind;
 pub use flow::Flow;
 pub use format::*;
 pub use level::Level;
 pub use logger::Logger;
 pub use record::Record;
-pub use config::Config;

@@ -107,7 +107,10 @@ impl Logger {
               match flows.println(format.format(data)) {
                 Ok(_) => continue,
                 Err(HandlingKind::Fuse(reason)) => {
-                  panic!("Logger encountered an unrecoverable error: {}", reason)
+                  panic!(
+                    "Logger encountered an unrecoverable error: {}",
+                    reason
+                  )
                 },
                 Err(HandlingKind::Ignore) => continue,
               }

@@ -23,4 +23,5 @@ marquage.workspace = true
 
 courier = { path = "../courier" }
 constants = { path = "../courier_core/constants" }
+logger = { path = "../courier_core/logger" }
 builtin = { path = "../builtin" }
