@@ -3,10 +3,10 @@ use clap::Args;
 #[derive(Args)]
 pub struct VersionArgs {
   #[arg(long)]
-  show_modules: bool,
+  show_builtins: bool,
 }
 
-pub async fn handle(_args: VersionArgs) -> anyhow::Result<()> {
+pub async fn handle(args: VersionArgs) -> anyhow::Result<()> {
   println!(
     "courier {} (build {}/{})",
     env!("CARGO_PKG_VERSION"),
@@ -14,13 +14,13 @@ pub async fn handle(_args: VersionArgs) -> anyhow::Result<()> {
     constants::BRANCH
   );
 
-  // if args.show_modules {
-  //   println!();
-  //   println!("All installed builtin modules:");
-  //   for module in builtin::get_all_builtins() {
-  //     println!("{}", module);
-  //   }
-  // }
+  if args.show_builtins {
+    println!();
+    println!("All installed builtin modules:");
+    for module in builtin::get_all_builtins() {
+      println!("{}", module);
+    }
+  }
 
   Ok(())
 }

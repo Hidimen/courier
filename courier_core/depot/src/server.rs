@@ -244,11 +244,10 @@ where
             error!("An error emitted by middleware handler: {}", e);
             DepotError::Execution
           })?;
-          let (frame, _keep_alive) =
-            protocol.encode(ctx).await.map_err(|e| {
-              error!("An error emitted by protocol encoder: {}", e);
-              DepotError::Execution
-            })?;
+          let frame = protocol.encode(ctx).await.map_err(|e| {
+            error!("An error emitted by protocol encoder: {}", e);
+            DepotError::Execution
+          })?;
           Ok(frame)
         })
         .await

@@ -1,4 +1,4 @@
-use std::io::{Write, stdout};
+use std::io::{IsTerminal, Write, stdout};
 
 use crate::{HandlingKind, Level, Record, flow::Flow};
 
@@ -32,6 +32,10 @@ impl ConsoleFlow {
 impl Flow for ConsoleFlow {
   fn println(&mut self, record: Record) -> Result<Record, HandlingKind> {
     let mut handle = stdout().lock();
+    if !handle.is_terminal() {
+      return Ok(record);
+    }
+
     handle.write_all(&record.content).map_err(|_| HandlingKind::Ignore)?;
     handle.write_all(b"\n").map_err(|_| HandlingKind::Ignore)?;
     Ok(record)

@@ -10,6 +10,7 @@ pub enum Commands {
   /// Start a server instance.
   Start(start::StartArgs),
   /// Get version of software.
+  #[command(alias = "ver")]
   Version(version::VersionArgs),
   #[cfg(debug_assertions)]
   /// Run specific test sets.

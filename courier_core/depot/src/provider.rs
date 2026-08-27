@@ -1,6 +1,6 @@
 use event::EventBus;
 use logger::{
-  DefaultFormatter, FormatConfig, PrettyFormatter, debug, flows::ConsoleFlow,
+  DefaultFormatter, FormatConfig, PrettyFormatter, flows::ConsoleFlow, info,
 };
 use network::transport::{DatagramTransport, StreamTransport, Transport};
 use protocol::{DatagramProtocol, Protocol, StreamProtocol};
@@ -8,26 +8,26 @@ use relay::{Middleware, Pipeline};
 
 use crate::{Builder, config::Config, wait_for_termination};
 
-/// The parts a stream (TCP) builtin module provides.
+/// The parts a stream (e.g. TCP) builtin module provides.
 ///
 /// A module implements this trait by declaring the transport its protocol
 /// runs over and supplying the protocol instance plus the middleware
 /// pipeline. Everything else — binding the transport, building the
-/// logger and event bus from the [`Config`], assembling the [`Depot`] and
+/// logger and event bus from the [`Config`], assembling the [`Depot`](crate::Depot) and
 /// entering the accept loop — is owned by the framework's default
 /// [`serve`](Self::serve) implementation.
 ///
 /// # Examples
 ///
 /// ```rust,no_run
-/// use depot::StreamAssembly;
+/// use depot::StreamProvider;
 ///
 /// /// Zero-sized parts; the pipeline is built on demand.
 /// #[derive(Default, Clone)]
 /// struct MyParts;
 ///
-/// impl StreamAssembly for MyParts {
-///   type Transport = network::tcp::TcpTransport;
+/// impl StreamProvider for MyParts {
+///   type Transport = network::transport::tcp::TcpTransport;
 ///   type Protocol = MyProtocol;
 ///
 ///   fn protocol(&self) -> Self::Protocol {
@@ -51,10 +51,10 @@ use crate::{Builder, config::Config, wait_for_termination};
 /// #   fn name() -> &'static str { "protocol:my" }
 /// #   fn version() -> &'static str { "0.1.0" }
 /// # }
-/// # impl protocol::StreamProtocol<network::tcp::TcpTransport> for MyProtocol {
+/// # impl protocol::StreamProtocol<network::transport::tcp::TcpTransport> for MyProtocol {
 /// #   async fn decode(
 /// #     &self,
-/// #     read_half: &mut <network::tcp::TcpTransport as network::transport::StreamTransport>::ReadHalf,
+/// #     read_half: &mut <network::transport::tcp::TcpTransport as network::transport::StreamTransport>::ReadHalf,
 /// #   ) -> Result<Self::Request, Self::Error> {
 /// #     Ok(MyRequest(String::new()))
 /// #   }
@@ -68,7 +68,9 @@ use crate::{Builder, config::Config, wait_for_termination};
 /// # struct MyRequest(pub String);
 /// # struct MyResponse(pub String);
 /// # let config = depot::config::Config::default();
+/// # tokio_test::block_on(async {
 /// # let _ = MyParts.serve(&config).await;
+/// # });
 /// ```
 pub trait StreamProvider: Sized {
   /// The stream transport this protocol requires (e.g. `TcpTransport`).
@@ -95,11 +97,7 @@ pub trait StreamProvider: Sized {
 
   /// Runs the server to completion.
   ///
-  /// This is the framework-owned lifecycle: it binds the transport to
-  /// `config.server.address`, builds the logger and event bus from the
-  /// config, assembles a [`Depot`] from the parts and enters the accept
-  /// loop. The module only supplies [`protocol`](Self::protocol) and
-  /// [`pipeline`](Self::pipeline).
+  /// **Note**: better not to overwrite this method, unless you exactly know what you are doing.
   fn serve(
     self, config: &Config,
   ) -> impl std::future::Future<Output = anyhow::Result<()>> + Send
@@ -140,7 +138,7 @@ pub trait StreamProvider: Sized {
 
       tokio::spawn(async move {
         wait_for_termination().await;
-        debug!("Cancellation triggered");
+        info!("Server stopped");
         token.cancel();
       });
 
@@ -150,6 +148,69 @@ pub trait StreamProvider: Sized {
   }
 }
 
+/// The parts a datagram (e.g. UDP) builtin module provides.
+///
+/// A module implements this trait by declaring the transport its protocol
+/// runs over and supplying the protocol instance plus the middleware
+/// pipeline. Everything else — binding the transport, building the
+/// logger and event bus from the [`Config`], assembling the [`Depot`](crate::Depot) and
+/// entering the accept loop — is owned by the framework's default
+/// [`serve`](Self::serve) implementation.
+///
+/// # Examples
+///
+/// ```rust,no_run
+/// use depot::DatagramProvider;
+///
+/// /// Zero-sized parts; the pipeline is built on demand.
+/// #[derive(Default, Clone)]
+/// struct MyParts;
+///
+/// impl DatagramProvider for MyParts {
+///   type Transport = network::transport::udp::UdpTransport;
+///   type Protocol = MyProtocol;
+///
+///   fn protocol(&self) -> Self::Protocol {
+///     MyProtocol
+///   }
+///
+///   fn pipeline(
+///     &self,
+///   ) -> relay::Pipeline<impl relay::Middleware<MyRequest, Response = MyResponse>> {
+///     relay::Builder::default()
+///       .then(|request: MyRequest| MyResponse(request.0))
+///       .build()
+///   }
+/// }
+///
+/// # #[derive(Clone)] struct MyProtocol;
+/// # impl protocol::Protocol for MyProtocol {
+/// #   type Error = std::convert::Infallible;
+/// #   type Request = MyRequest;
+/// #   type Response = MyResponse;
+/// #   fn name() -> &'static str { "protocol:my" }
+/// #   fn version() -> &'static str { "0.1.0" }
+/// # }
+/// # impl protocol::DatagramProtocol<network::transport::udp::UdpTransport> for MyProtocol {
+/// #   async fn decode(
+/// #     &self, data: &[u8]
+/// #   ) -> Result<Self::Request, Self::Error> {
+/// #     Ok(MyRequest(String::new()))
+/// #   }
+/// #   async fn encode(
+/// #     &self,
+/// #     response: Self::Response,
+/// #   ) -> Result<network::Frame, Self::Error> {
+/// #     Ok(network::Frame::from_owner(response.0))
+/// #   }
+/// # }
+/// # struct MyRequest(pub String);
+/// # struct MyResponse(pub String);
+/// # let config = depot::config::Config::default();
+/// # tokio_test::block_on(async {
+/// # let _ = MyParts.serve(&config).await;
+/// # });
+/// ```
 pub trait DatagramProvider: Sized {
   /// The stream transport this protocol requires.
   type Transport: DatagramTransport;
@@ -175,11 +236,7 @@ pub trait DatagramProvider: Sized {
 
   /// Runs the server to completion.
   ///
-  /// This is the framework-owned lifecycle: it binds the transport to
-  /// `config.server.address`, builds the logger and event bus from the
-  /// config, assembles a [`Depot`] from the parts and enters the accept
-  /// loop. The module only supplies [`protocol`](Self::protocol) and
-  /// [`pipeline`](Self::pipeline).
+  /// **Note**: better not to overwrite this method, unless you exactly know what you are doing.
   fn serve(
     self, config: &Config,
   ) -> impl std::future::Future<Output = anyhow::Result<()>> + Send
@@ -206,7 +263,7 @@ pub trait DatagramProvider: Sized {
       };
       let event_bus = EventBus::new(config.server.event.capacity).install();
 
-      logger::info!("Listening on {}", config.server.address);
+      info!("Listening on {}", config.server.address);
 
       let mut depot = Builder::new()
         .transport(transport)
@@ -220,7 +277,7 @@ pub trait DatagramProvider: Sized {
 
       tokio::spawn(async move {
         wait_for_termination().await;
-        debug!("Cancellation triggered");
+        info!("Server stopped");
         token.cancel();
       });
 

@@ -1,8 +1,6 @@
-use depot::{StreamProvider, self};
+use depot::{self, StreamProvider};
 use network::{
-  Frame, KeepAlive,
-  stream::ReadHalf,
-  transport::tcp::TcpTransport,
+  Frame, KeepAlive, stream::ReadHalf, transport::tcp::TcpTransport,
 };
 use protocol::{Protocol, StreamProtocol};
 use thiserror::Error;
@@ -41,7 +39,8 @@ impl Protocol for EchoProtocol {
 
 impl StreamProtocol<TcpTransport> for EchoProtocol {
   async fn decode(
-    &self, read_half: &mut <TcpTransport as network::transport::StreamTransport>::ReadHalf,
+    &self,
+    read_half: &mut <TcpTransport as network::transport::StreamTransport>::ReadHalf,
   ) -> Result<Self::Request, Self::Error> {
     let mut buf = [0u8; 1024];
     let _ = read_half.read(&mut buf).await?;

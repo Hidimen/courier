@@ -47,5 +47,5 @@ pub trait DatagramProtocol<T: DatagramTransport>: Protocol {
   /// Encodes a response into a frame and keep-alive directive.
   fn encode(
     &self, response: Self::Response,
-  ) -> impl Future<Output = Result<(Frame, KeepAlive), Self::Error>> + Send;
+  ) -> impl Future<Output = Result<Frame, Self::Error>> + Send;
 }
