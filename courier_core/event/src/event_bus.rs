@@ -12,7 +12,7 @@ use crossbeam_channel::{RecvTimeoutError, Sender, TrySendError};
 use dashmap::DashMap;
 
 use crate::{
-  Event, EventHandler, Subscriber, Subscription,
+  Config, Event, EventHandler, Subscriber, Subscription,
   error::{
     EmitError, RegisterError, SubscribeError, UnregisterError, UnsubscribeError,
   },
@@ -70,6 +70,10 @@ impl EventBus {
       .unwrap();
 
     Self { handle: Mutex::new(Some(handle)), signal, sender, subscribers }
+  }
+
+  pub fn from_config(config: Config) -> Self {
+    Self::new(config.capacity)
   }
 
   pub fn install(self) -> Arc<Self> {
@@ -147,6 +151,22 @@ impl EventBus {
       Some(s) => s.clone(),
       None => panic!("EventBus not initialized"),
     }
+  }
+
+  /// Returns the installed [`EventBus`] instance, if any.
+  ///
+  /// Unlike [`get_instance`], this does not panic when the bus has not
+  /// been installed yet.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// use event::EventBus;
+  ///
+  /// let _ = EventBus::try_get_instance();
+  /// ```
+  pub fn try_get_instance() -> Option<Arc<Self>> {
+    EVENT_BUS.get().cloned()
   }
 }
 

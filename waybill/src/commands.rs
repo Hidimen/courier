@@ -1,5 +1,5 @@
-mod list;
 mod start;
+#[cfg(debug_assertions)]
 mod test;
 mod version;
 
@@ -18,12 +18,12 @@ pub enum Commands {
 }
 
 impl Commands {
-  pub async fn execute(self) -> anyhow::Result<()> {
+  pub fn execute(self) -> anyhow::Result<()> {
     match self {
-      Self::Start(args) => start::handle(args).await,
-      Self::Version(args) => version::handle(args).await,
+      Self::Start(args) => start::handle(args),
+      Self::Version(args) => version::handle(args),
       #[cfg(debug_assertions)]
-      Self::Test(args) => test::handle(args).await,
+      Self::Test(args) => test::handle(args),
     }
   }
 }

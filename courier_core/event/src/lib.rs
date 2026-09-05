@@ -6,6 +6,7 @@ mod subscribe;
 #[macro_use]
 mod macros;
 mod config;
+pub mod events;
 
 pub use config::Config;
 pub use event::Event;

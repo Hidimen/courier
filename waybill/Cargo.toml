@@ -5,6 +5,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+authors.workspace = true
 
 [lib]
 doc = false
@@ -16,12 +17,18 @@ doc = false
 
 [dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread"] }
+tokio-util.workspace = true
 clap = { version = "4.6.1", features = ["derive", "cargo"] }
 anyhow = "1.0.104"
 thiserror.workspace = true
 marquage.workspace = true
+chrono.workspace = true
 
 courier = { path = "../courier" }
 constants = { path = "../courier_core/constants" }
 logger = { path = "../courier_core/logger" }
 builtin = { path = "../builtin" }
+event = { path = "../courier_core/event" }
+
+[target.'cfg(windows)'.dependencies]
+windows-service = "0.8.1"

@@ -6,7 +6,7 @@ pub struct VersionArgs {
   show_builtins: bool,
 }
 
-pub async fn handle(args: VersionArgs) -> anyhow::Result<()> {
+pub fn handle(args: VersionArgs) -> anyhow::Result<()> {
   println!(
     "courier {} (build {}/{})",
     env!("CARGO_PKG_VERSION"),

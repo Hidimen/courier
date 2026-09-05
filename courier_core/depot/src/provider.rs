@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use event::EventBus;
 use logger::{
   DefaultFormatter, FormatConfig, PrettyFormatter, flows::ConsoleFlow, info,
@@ -5,8 +7,9 @@ use logger::{
 use network::transport::{DatagramTransport, StreamTransport, Transport};
 use protocol::{DatagramProtocol, Protocol, StreamProtocol};
 use relay::{Middleware, Pipeline};
+use tokio_util::sync::CancellationToken;
 
-use crate::{Builder, config::Config, wait_for_termination};
+use crate::{Builder, config::Config};
 
 /// The parts a stream (e.g. TCP) builtin module provides.
 ///
@@ -67,9 +70,13 @@ use crate::{Builder, config::Config, wait_for_termination};
 /// # }
 /// # struct MyRequest(pub String);
 /// # struct MyResponse(pub String);
+/// # use std::sync::Arc;
+/// # use tokio_util::sync::CancellationToken;
 /// # let config = depot::config::Config::default();
 /// # tokio_test::block_on(async {
-/// # let _ = MyParts.serve(&config).await;
+/// # let _ = MyParts
+/// #   .serve(&config, Arc::new(CancellationToken::new()))
+/// #   .await;
 /// # });
 /// ```
 pub trait StreamProvider: Sized {
@@ -95,11 +102,13 @@ pub trait StreamProvider: Sized {
     >,
   >;
 
-  /// Runs the server to completion.
+  /// Runs the server to completion, using `cancellation_token` to control
+  /// shutdown: when it is cancelled, the server stops accepting new
+  /// connections and the future completes.
   ///
   /// **Note**: better not to overwrite this method, unless you exactly know what you are doing.
   fn serve(
-    self, config: &Config,
+    self, config: &Config, cancellation_token: Arc<CancellationToken>,
   ) -> impl std::future::Future<Output = anyhow::Result<()>> + Send
   where
     Self: Send,
@@ -132,15 +141,8 @@ pub trait StreamProvider: Sized {
         .pipeline(pipeline)
         .logger(logger)
         .event_bus(event_bus)
+        .cancellation_token(cancellation_token)
         .build()?;
-
-      let token = depot.cancellation_token();
-
-      tokio::spawn(async move {
-        wait_for_termination().await;
-        info!("Server stopped");
-        token.cancel();
-      });
 
       depot.run_stream().await;
       Ok(())
@@ -206,9 +208,13 @@ pub trait StreamProvider: Sized {
 /// # }
 /// # struct MyRequest(pub String);
 /// # struct MyResponse(pub String);
+/// # use std::sync::Arc;
+/// # use tokio_util::sync::CancellationToken;
 /// # let config = depot::config::Config::default();
 /// # tokio_test::block_on(async {
-/// # let _ = MyParts.serve(&config).await;
+/// # let _ = MyParts
+/// #   .serve(&config, Arc::new(CancellationToken::new()))
+/// #   .await;
 /// # });
 /// ```
 pub trait DatagramProvider: Sized {
@@ -234,11 +240,13 @@ pub trait DatagramProvider: Sized {
     >,
   >;
 
-  /// Runs the server to completion.
+  /// Runs the server to completion, using `cancellation_token` to control
+  /// shutdown: when it is cancelled, the server stops accepting new
+  /// connections and the future completes.
   ///
   /// **Note**: better not to overwrite this method, unless you exactly know what you are doing.
   fn serve(
-    self, config: &Config,
+    self, config: &Config, cancellation_token: Arc<CancellationToken>,
   ) -> impl std::future::Future<Output = anyhow::Result<()>> + Send
   where
     Self: Send,
@@ -271,15 +279,8 @@ pub trait DatagramProvider: Sized {
         .pipeline(pipeline)
         .logger(logger)
         .event_bus(event_bus)
+        .cancellation_token(cancellation_token)
         .build()?;
-
-      let token = depot.cancellation_token();
-
-      tokio::spawn(async move {
-        wait_for_termination().await;
-        info!("Server stopped");
-        token.cancel();
-      });
 
       depot.run_datagram().await;
       Ok(())
