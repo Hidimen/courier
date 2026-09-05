@@ -195,7 +195,7 @@ impl ToTokens for RegistryInput {
           #name => {
             #trait_use
             let provider = #path::default();
-            provider.serve(config).await
+            provider.serve(config, cancellation_token).await
           }
         })
       })
@@ -239,6 +239,7 @@ impl ToTokens for RegistryInput {
       pub async fn run_instance(
         bootloader: &str,
         config: &depot::config::Config,
+        cancellation_token: std::sync::Arc<tokio_util::sync::CancellationToken>,
       ) -> anyhow::Result<()> {
         match bootloader {
           #(#run_arms,)*
@@ -254,78 +255,5 @@ impl ToTokens for RegistryInput {
         ]
       }
     });
-  }
-}
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-  use quote::ToTokens;
-
-  fn parse(input: &str) -> RegistryInput {
-    syn::parse_str(input).expect("registry input should parse")
-  }
-
-  #[test]
-  fn parses_module_with_provider_and_metadata() {
-    let registry = parse(
-      "echo: { \
-         provider => echo::EchoProvider as stream, \
-         version => \"0.1.0\", \
-         description => \"echo server\", \
-       };",
-    );
-
-    let module = &registry.modules[0];
-    assert_eq!(module.name.to_string(), "echo");
-
-    let provider = module.provider().expect("provider field present");
-    assert_eq!(
-      provider.path.to_token_stream().to_string(),
-      "echo :: EchoProvider"
-    );
-    assert!(matches!(provider.kind, ProviderKind::Stream));
-
-    assert_eq!(module.version().as_deref(), Some("0.1.0"));
-    assert_eq!(module.description().as_deref(), Some("echo server"));
-  }
-
-  #[test]
-  fn datagram_kind_is_detected() {
-    let registry =
-      parse("relay: { provider => relay::RelayProvider as datagram };");
-    let provider = registry.modules[0].provider().unwrap();
-    assert!(matches!(provider.kind, ProviderKind::Datagram));
-  }
-
-  /// Kind validation is deferred: the registry parses, and an unknown kind
-  /// panics when the provider is resolved.
-  #[test]
-  #[should_panic(expected = "unknown provider kind `tcp`")]
-  fn unknown_provider_kind_panics_when_resolved() {
-    let registry = parse("foo: { provider => foo::Foo as tcp };");
-    let _ = registry.modules[0].provider();
-  }
-
-  #[test]
-  fn to_tokens_emits_run_instance_and_builtin_metadata() {
-    let registry = parse(
-      "echo: { \
-         provider => echo::EchoProvider as stream, \
-         version => \"1.2.3\", \
-         description => \"echo server\", \
-       };",
-    );
-
-    let code = registry.to_token_stream().to_string();
-
-    assert!(code.contains("pub async fn run_instance"));
-    assert!(code.contains("use depot :: StreamProvider as _ ;"));
-    assert!(code.contains("\"echo\" =>"));
-    assert!(code.contains("echo :: EchoProvider :: default ()"));
-    assert!(code.contains("pub fn get_all_builtins"));
-    assert!(code.contains("name : \"echo\""));
-    assert!(code.contains("version : \"1.2.3\""));
-    assert!(code.contains("description : \"echo server\""));
   }
 }

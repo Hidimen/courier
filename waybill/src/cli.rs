@@ -23,7 +23,7 @@ impl Cli {
     Self::parse()
   }
 
-  pub async fn execute(self) -> anyhow::Result<()> {
-    self.commands.execute().await
+  pub fn execute(self) -> anyhow::Result<()> {
+    self.commands.execute()
   }
 }

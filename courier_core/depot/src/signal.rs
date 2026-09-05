@@ -1,3 +1,9 @@
+/// Waits for termination signal.
+///
+/// This function will block on until termination signal comes in.
+///
+/// # Platform-specific
+/// On unix-like, it waits for `SIGTERM`. On Windows, it waits for `Ctrl+C`.
 pub async fn wait_for_termination() {
   #[cfg(unix)]
   {

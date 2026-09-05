@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use event::EventBus;
+use event::{EventBus, events};
 use logger::{Logger, error};
 use network::{
   KeepAlive,
@@ -34,23 +34,27 @@ pub struct Depot<T, P, M> {
   pipeline: Arc<Pipeline<M>>,
   logger: Arc<Logger>,
   event_bus: Arc<EventBus>,
-  cancellation_token: CancellationToken,
+  cancellation_token: Arc<CancellationToken>,
 }
 
 impl<T, P, M> Depot<T, P, M> {
-  /// Creates a new [`Depot`] from a transport, a protocol, and a
-  /// pipeline.
+  /// Creates a new [`Depot`] from a transport, a protocol, a pipeline, a
+  /// logger, an event bus, and the [`CancellationToken`] that controls its
+  /// shutdown.
   pub fn new(
     transport: T, protocol: P, pipeline: Pipeline<M>, logger: Arc<Logger>,
-    event_bus: Arc<EventBus>,
+    event_bus: Arc<EventBus>, cancellation_token: Arc<CancellationToken>,
   ) -> Self {
+    let _ = event_bus.register::<events::ServerStart>();
+    let _ = event_bus.register::<events::ServerStop>();
+
     Self {
       transport,
       protocol: Arc::new(protocol),
       pipeline: Arc::new(pipeline),
       logger,
       event_bus,
-      cancellation_token: CancellationToken::new(),
+      cancellation_token,
     }
   }
 
@@ -74,8 +78,14 @@ impl<T, P, M> Depot<T, P, M> {
     self.event_bus.clone()
   }
 
+  /// Returns a cancellation token.
   pub fn cancellation_token(&self) -> CancellationToken {
-    self.cancellation_token.clone()
+    self.cancellation_token.child_token()
+  }
+
+  /// Stop the instance.
+  pub fn stop(&self) {
+    self.cancellation_token.cancel();
   }
 }
 

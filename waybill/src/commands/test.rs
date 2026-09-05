@@ -13,11 +13,9 @@ enum TestSubcommands {
   ConfigParse(config::ParseArgs),
 }
 
-pub async fn handle(args: TestArgs) -> anyhow::Result<()> {
+pub fn handle(args: TestArgs) -> anyhow::Result<()> {
   match args.subcommands {
-    TestSubcommands::ConfigParse(sub_args) => {
-      config::handle_parse(sub_args).await
-    },
+    TestSubcommands::ConfigParse(sub_args) => config::handle_parse(sub_args),
   }
 }
 
@@ -46,7 +44,7 @@ mod config {
     Plain,
   }
 
-  pub async fn handle_parse(args: ParseArgs) -> anyhow::Result<()> {
+  pub fn handle_parse(args: ParseArgs) -> anyhow::Result<()> {
     let content =
       std::fs::read(args.path).context("Cannot read config file")?;
     match args.kind {

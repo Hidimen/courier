@@ -7,15 +7,18 @@ version = "0.1.0-alpha.1"
 edition = "2024"
 rust-version = "1.98"
 license = "Apache-2.0"
+authors = ["Courier Team"]
 
 [workspace.metadata.carrier]
 kind = "courier"
 
 [workspace.dependencies]
 tokio = "1.52.1"
+tokio-util = "0.7.19"
 thiserror = "2.0.18"
 crossbeam-channel = "0.5.15"
 anyhow = "1.0.104"
+chrono = "0.4.45"
 
 marquage = { git = "https://github.com/Hidimen/marquage.git", branch = "feat/1.0.0" }
 
