@@ -1,35 +1,18 @@
-use thiserror::Error;
+use std::error::Error;
 
-#[derive(Debug, Error)]
-pub enum RegisterError {
-  #[error("Event already exists")]
-  EventAlreadyExists,
-}
+#[derive(Debug, thiserror::Error)]
+#[error("Listener error: {0}")]
+pub struct ListenerError(Box<dyn Error + Send + Sync + 'static>);
 
-#[derive(Debug, Error)]
-pub enum UnregisterError {
-  #[error("Event not found")]
-  EventNotFound,
-}
+impl ListenerError {
+  pub fn new<E>(error: E) -> Self
+  where
+    E: Error + Send + Sync + 'static,
+  {
+    Self(Box::new(error))
+  }
 
-#[derive(Debug, Error)]
-pub enum EmitError {
-  #[error("Event channel is full")]
-  Full,
-  #[error("Event channel is closed")]
-  Closed,
-}
-
-#[derive(Debug, Error)]
-pub enum SubscribeError {
-  #[error("Event not found")]
-  EventNotFound,
-}
-
-#[derive(Debug, Error)]
-pub enum UnsubscribeError {
-  #[error("Event not found")]
-  EventNotFound,
-  #[error("Subscriber not found")]
-  SubscriberNotFound,
+  pub fn message<S: Into<String>>(msg: S) -> Self {
+    Self(msg.into().into())
+  }
 }

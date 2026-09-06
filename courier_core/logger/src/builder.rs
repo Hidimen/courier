@@ -89,12 +89,12 @@ impl<Formatter: Format> Builder<Empty, Formatter> {
   /// # Example
   ///
   /// ```rust
+  /// use std::fmt::Write as _;
   /// use logger::Builder;
   ///
   /// let builder = Builder::new()
-  ///     .format(|mut r: logger::Record| {
-  ///         r.content = format!("[CUSTOM] {}", String::from_utf8_lossy(&r.content)).into();
-  ///         r
+  ///     .format(|record: &logger::Record, _timestamp: &str, out: &mut String| {
+  ///         write!(out, "[CUSTOM] {}", String::from_utf8_lossy(&record.content))
   ///     });
   /// ```
   pub fn format<For: Format>(self, formatter: For) -> Builder<Empty, For> {
@@ -266,9 +266,10 @@ where
 
 #[cfg(test)]
 mod tests {
-  use super::*;
+  use std::fmt::Write as _;
   use std::sync::{Arc, Mutex};
 
+  use super::*;
   use crate::{HandlingKind, Level, Record, flow::Flow};
 
   struct TestFlow {
@@ -286,10 +287,11 @@ mod tests {
   }
 
   impl Flow for TestFlow {
-    fn println(&mut self, record: Record) -> Result<Record, HandlingKind> {
-      let content = String::from_utf8(record.content.to_vec()).unwrap();
-      self.output.lock().unwrap().push(content);
-      Ok(record)
+    fn println(
+      &mut self, _record: &Record, line: &str,
+    ) -> Result<(), HandlingKind> {
+      self.output.lock().unwrap().push(line.to_owned());
+      Ok(())
     }
 
     fn flush(&mut self) -> Result<(), HandlingKind> {
@@ -363,10 +365,8 @@ mod tests {
 
     let logger = Builder::new()
       .capacity(128)
-      .format(|mut r: Record| {
-        r.content =
-          format!("[CUSTOM] {}", String::from_utf8_lossy(&r.content)).into();
-        r
+      .format(|record: &Record, _timestamp: &str, out: &mut String| {
+        write!(out, "[CUSTOM] {}", String::from_utf8_lossy(&record.content))
       })
       .add_flow(flow)
       .build_local()
@@ -384,19 +384,15 @@ mod tests {
   #[test]
   fn default_formatter_output_format() {
     use crate::Format;
-    use chrono::DateTime;
 
     let record = Record::new("test msg".into(), Level::Info, "test");
     let formatter = DefaultFormatter;
-    let result = formatter.format(record);
+    let mut line = String::new();
+    formatter.format(&record, "2026-01-02 03:04:05", &mut line).unwrap();
 
-    let output = String::from_utf8(result.content.to_vec()).unwrap();
     // Format: [YYYY-MM-DD HH:MM:SS][INFO][test] test msg
-    assert!(output.starts_with('['));
-    assert!(output.contains("][INFO][test] test msg"));
-    // Verify timestamp part parses correctly
-    let ts_end = output.find(']').unwrap();
-    let _ts_str = &output[1..ts_end];
-    assert!(DateTime::from_timestamp(result.timestamp, 0).is_some());
+    assert_eq!(line, "[2026-01-02 03:04:05][INFO][test] test msg\n");
+    assert!(line.starts_with('['));
+    assert!(line.contains("][INFO][test] test msg"));
   }
 }

@@ -1,13 +1,11 @@
 use std::{
-  sync::{
-    Arc, Mutex, OnceLock,
-    atomic::{AtomicBool, Ordering},
-  },
+  fmt::Write as _,
+  sync::{Arc, Mutex, OnceLock},
   thread::JoinHandle,
-  time::Duration,
 };
 
-use crossbeam_channel::{RecvTimeoutError, Sender, bounded};
+use chrono::DateTime;
+use crossbeam_channel::{Sender, bounded};
 
 use crate::{Format, HandlingKind, Level, Record, flow::Flow};
 
@@ -17,14 +15,30 @@ static LOGGER: OnceLock<Arc<Logger>> = OnceLock::new();
 /// processing.
 ///
 /// A `Logger` holds an internal MPSC channel and spawns a dedicated thread
-/// that formats incoming [`Record`]s and dispatches them through the
+/// that renders each incoming [`Record`] into its complete textual line
+/// through the configured [`Format`] and dispatches that line to the
 /// registered [`Flow`]s.
+///
+/// # Performance model
+///
+/// - **Call-site gating** — records below the logger's minimum accepted
+///   level are discarded before the payload is formatted and before they
+///   cross the channel.
+/// - **Single-pass rendering** — the worker renders the *complete* line
+///   through the configured [`Format`] (which has full control of the
+///   output) into a reusable buffer, then flows write it verbatim;
+///   steady-state formatting allocates nothing and no sink re-formats.
+/// - **Cached timestamps** — the `YYYY-MM-DD HH:MM:SS` prefix is computed at
+///   most once per wall-clock second on the worker thread.
+/// - **Idle cost** — the worker blocks on the channel and wakes only when a
+///   record arrives or the logger is dropped.
 ///
 /// # Lifecycle
 ///
-/// The logger thread runs until the `Logger` is dropped, at which point it
-/// signals the thread to stop, drains remaining records, flushes all flows,
-/// and joins the thread.
+/// The logger thread runs until the `Logger` is dropped, at which point the
+/// internal sender is dropped, the worker drains every queued record,
+/// flushes all flows, exits, and is joined — so `drop` returning guarantees
+/// all previously sent records reached their sinks.
 ///
 /// # Global singleton
 ///
@@ -41,7 +55,7 @@ static LOGGER: OnceLock<Arc<Logger>> = OnceLock::new();
 /// let logger = Logger::new(
 ///     128,
 ///     logger::flows::ConsoleFlow::new(Level::Info),
-///     |r| r,  // no-op formatter
+///     |_record: &logger::Record, _timestamp: &str, _out: &mut String| Ok(()),  // no-op formatter
 /// );
 ///
 /// logger.info("Hello!".into(), "my_app");
@@ -50,19 +64,8 @@ static LOGGER: OnceLock<Arc<Logger>> = OnceLock::new();
 #[derive(Debug)]
 pub struct Logger {
   handle: Mutex<Option<JoinHandle<()>>>,
-  sender: Sender<Record>,
-  signal: Arc<AtomicBool>,
-}
-
-impl Drop for Logger {
-  fn drop(&mut self) {
-    self.signal.store(false, Ordering::Release);
-    if let Ok(mut guard) = self.handle.lock()
-      && let Some(handle) = guard.take()
-    {
-      let _ = handle.join();
-    }
-  }
+  sender: Option<Sender<Record>>,
+  min_level: Level,
 }
 
 impl Logger {
@@ -75,7 +78,7 @@ impl Logger {
   ///
   /// - `capacity` — size of the internal MPSC channel buffer.
   /// - `flows` — the composite flow (typically a [`Stack`](crate::flow::Stack)).
-  /// - `format` — the formatter applied to each record before dispatch.
+  /// - `format` — renders the complete textual line for each record.
   ///
   /// # Panics
   ///
@@ -87,8 +90,7 @@ impl Logger {
     Formatter: Format,
   {
     let (sender, receiver) = bounded::<Record>(capacity);
-    let signal = Arc::new(AtomicBool::new(true));
-    let signal_cloned = signal.clone();
+    let min_level = flows.min_level();
 
     let handle = std::thread::Builder::new()
       .name("courier:logger".into())
@@ -96,27 +98,44 @@ impl Logger {
       .spawn(move || {
         let mut flows = flows;
         let format = format;
-        let signal = signal_cloned;
-        while signal.load(Ordering::Acquire) {
-          match receiver.recv_timeout(Duration::from_millis(500)) {
-            Ok(data) => {
-              if !flows.can_log(&data) {
-                continue;
-              }
 
-              match flows.println(format.format(data)) {
-                Ok(_) => continue,
-                Err(HandlingKind::Fuse(reason)) => {
-                  panic!(
-                    "Logger encountered an unrecoverable error: {}",
-                    reason
-                  )
-                },
-                Err(HandlingKind::Ignore) => continue,
-              }
+        // Worker-local reusable buffers. The timestamp string is recomputed
+        // at most once per wall-clock second (records carry second
+        // resolution), and the line buffer is rewritten in place by the
+        // formatter for every record — steady-state formatting allocates
+        // nothing here.
+        let mut last_second = i64::MIN;
+        let mut ts_buf = String::new();
+        let mut line = String::new();
+
+        while let Ok(data) = receiver.recv() {
+          if !flows.can_log(&data) {
+            continue;
+          }
+
+          if data.timestamp != last_second {
+            last_second = data.timestamp;
+            ts_buf.clear();
+            let _ = write!(
+              ts_buf,
+              "{}",
+              DateTime::from_timestamp(data.timestamp, 0)
+                .unwrap()
+                .format("%Y-%m-%d %H:%M:%S")
+            );
+          }
+
+          line.clear();
+          if format.format(&data, &ts_buf, &mut line).is_err() {
+            continue;
+          }
+
+          match flows.println(&data, &line) {
+            Ok(()) => continue,
+            Err(HandlingKind::Fuse(reason)) => {
+              panic!("Logger encountered an unrecoverable error: {}", reason)
             },
-            Err(RecvTimeoutError::Disconnected) => break,
-            Err(RecvTimeoutError::Timeout) => continue,
+            Err(HandlingKind::Ignore) => continue,
           }
         }
 
@@ -124,7 +143,7 @@ impl Logger {
       })
       .expect("Unable to spawn a logger thread");
 
-    Self { handle: Mutex::new(Some(handle)), sender, signal }
+    Self { handle: Mutex::new(Some(handle)), sender: Some(sender), min_level }
   }
 
   /// Installs this logger as the global singleton.
@@ -188,8 +207,33 @@ impl Logger {
     LOGGER.get().cloned()
   }
 
+  /// Returns `true` when the globally-installed logger could emit a record at
+  /// `level`.
+  ///
+  /// This is the call-site gate used by the logging macros: when it returns
+  /// `false` the payload is never formatted and nothing crosses the channel.
+  ///
+  /// When no logger has been installed yet this always returns `true`, which
+  /// preserves the documented behaviour of the plain macros (they panic via
+  /// [`get_instance`](Logger::get_instance)); the `try_*` macros then no-op
+  /// as usual.
+  #[doc(hidden)]
+  pub fn is_enabled(level: Level) -> bool {
+    match LOGGER.get() {
+      Some(logger) => level >= logger.min_level,
+      None => true,
+    }
+  }
+
   fn log(&self, record: Record) {
-    let _ = self.sender.try_send(record);
+    // Cheap instance gate: records this logger can never emit never reach
+    // the channel (macros already skipped building them entirely).
+    if record.level < self.min_level {
+      return;
+    }
+    if let Some(sender) = &self.sender {
+      let _ = sender.try_send(record);
+    }
   }
 
   /// Logs a message at [`Level::Trace`].
@@ -385,6 +429,19 @@ impl Logger {
   }
 }
 
+impl Drop for Logger {
+  fn drop(&mut self) {
+    // Drop the sender first: the channel disconnects, the worker drains
+    // every queued record, flushes all flows and exits. Joining afterwards
+    // makes `drop` fully synchronous — when it returns every record has
+    // reached its sinks and the thread is gone.
+    self.sender.take();
+    if let Some(handle) = self.handle.get_mut().unwrap().take() {
+      let _ = handle.join();
+    }
+  }
+}
+
 impl Default for Logger {
   fn default() -> Self {
     Self::new(
@@ -414,10 +471,11 @@ mod tests {
   }
 
   impl Flow for MockFlow {
-    fn println(&mut self, record: Record) -> Result<Record, HandlingKind> {
-      let content = String::from_utf8(record.content.to_vec()).unwrap();
-      self.output.lock().unwrap().push(content);
-      Ok(record)
+    fn println(
+      &mut self, _record: &Record, line: &str,
+    ) -> Result<(), HandlingKind> {
+      self.output.lock().unwrap().push(line.to_owned());
+      Ok(())
     }
 
     fn flush(&mut self) -> Result<(), HandlingKind> {
@@ -437,7 +495,16 @@ mod tests {
   fn logger_logs_at_all_levels() {
     let output = Arc::new(Mutex::new(Vec::new()));
     let flow = MockFlow::new(Level::Trace, output.clone());
-    let logger = Logger::new(128, flow, |r| r);
+    let logger = Logger::new(
+      128,
+      flow,
+      |record: &Record, _timestamp: &str, out: &mut String| {
+        // Simulates a formatter that emits the raw payload verbatim.
+        out.push_str(&String::from_utf8_lossy(&record.content));
+        out.push('\n');
+        Ok(())
+      },
+    );
 
     logger.trace("trace msg".into(), "test");
     logger.debug("debug msg".into(), "test");
@@ -464,7 +531,16 @@ mod tests {
   fn logger_with_target() {
     let output = Arc::new(Mutex::new(Vec::new()));
     let flow = MockFlow::new(Level::Trace, output.clone());
-    let logger = Logger::new(128, flow, |r| r);
+    let logger = Logger::new(
+      128,
+      flow,
+      |record: &Record, _timestamp: &str, out: &mut String| {
+        // Simulates a formatter that emits the raw payload verbatim.
+        out.push_str(&String::from_utf8_lossy(&record.content));
+        out.push('\n');
+        Ok(())
+      },
+    );
 
     logger.info_with_target("targeted msg".into(), "test", "mock");
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -479,7 +555,16 @@ mod tests {
   fn logger_from_static() {
     let output = Arc::new(Mutex::new(Vec::new()));
     let flow = MockFlow::new(Level::Trace, output.clone());
-    let logger = Logger::new(128, flow, |r| r);
+    let logger = Logger::new(
+      128,
+      flow,
+      |record: &Record, _timestamp: &str, out: &mut String| {
+        // Simulates a formatter that emits the raw payload verbatim.
+        out.push_str(&String::from_utf8_lossy(&record.content));
+        out.push('\n');
+        Ok(())
+      },
+    );
 
     logger.info_from_static("static msg", "test");
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -495,14 +580,30 @@ mod tests {
     let output1 = Arc::new(Mutex::new(Vec::new()));
     let output2 = Arc::new(Mutex::new(Vec::new()));
 
-    let logger1 =
-      Logger::new(128, MockFlow::new(Level::Trace, output1.clone()), |r| r);
+    let logger1 = Logger::new(
+      128,
+      MockFlow::new(Level::Trace, output1.clone()),
+      |record: &Record, _timestamp: &str, out: &mut String| {
+        // Simulates a formatter that emits the raw payload verbatim.
+        out.push_str(&String::from_utf8_lossy(&record.content));
+        out.push('\n');
+        Ok(())
+      },
+    );
     logger1.info("logger1 msg".into(), "test");
     std::thread::sleep(std::time::Duration::from_millis(100));
     drop(logger1);
 
-    let logger2 =
-      Logger::new(128, MockFlow::new(Level::Trace, output2.clone()), |r| r);
+    let logger2 = Logger::new(
+      128,
+      MockFlow::new(Level::Trace, output2.clone()),
+      |record: &Record, _timestamp: &str, out: &mut String| {
+        // Simulates a formatter that emits the raw payload verbatim.
+        out.push_str(&String::from_utf8_lossy(&record.content));
+        out.push('\n');
+        Ok(())
+      },
+    );
     logger2.info("logger2 msg".into(), "test");
     std::thread::sleep(std::time::Duration::from_millis(100));
     drop(logger2);
@@ -534,7 +635,16 @@ mod tests {
     let output = Arc::new(Mutex::new(Vec::new()));
     let flow = MockFlow::new(Level::Trace, output.clone());
 
-    let logger = Logger::new(128, flow, |r| r);
+    let logger = Logger::new(
+      128,
+      flow,
+      |record: &Record, _timestamp: &str, out: &mut String| {
+        // Simulates a formatter that emits the raw payload verbatim.
+        out.push_str(&String::from_utf8_lossy(&record.content));
+        out.push('\n');
+        Ok(())
+      },
+    );
     logger.info("before drop".into(), "test");
     std::thread::sleep(std::time::Duration::from_millis(100));
 
@@ -549,7 +659,16 @@ mod tests {
   fn logger_format_variants() {
     let output = Arc::new(Mutex::new(Vec::new()));
     let flow = MockFlow::new(Level::Trace, output.clone());
-    let logger = Logger::new(128, flow, |r| r);
+    let logger = Logger::new(
+      128,
+      flow,
+      |record: &Record, _timestamp: &str, out: &mut String| {
+        // Simulates a formatter that emits the raw payload verbatim.
+        out.push_str(&String::from_utf8_lossy(&record.content));
+        out.push('\n');
+        Ok(())
+      },
+    );
 
     // Positional args
     logger.info(format!("hello {}", "world"), "test");

@@ -1,3 +1,4 @@
+use std::fmt::Write as _;
 use std::sync::{Arc, Mutex};
 
 use logger::{Builder, Flow, HandlingKind, Level, Logger, Record};
@@ -14,10 +15,11 @@ impl MockFlow {
 }
 
 impl Flow for MockFlow {
-  fn println(&mut self, record: Record) -> Result<Record, HandlingKind> {
-    let content = String::from_utf8(record.content.to_vec()).unwrap();
-    self.output.lock().unwrap().push(content);
-    Ok(record)
+  fn println(
+    &mut self, _record: &Record, line: &str,
+  ) -> Result<(), HandlingKind> {
+    self.output.lock().unwrap().push(line.to_owned());
+    Ok(())
   }
 
   fn flush(&mut self) -> Result<(), HandlingKind> {
@@ -33,9 +35,9 @@ impl Flow for MockFlow {
   }
 }
 
-/// Helper: wait a bit for the logger thread to process messages, then drop.
+/// Dropping the logger is synchronous: the worker drains every queued
+/// record, flushes the flows and is joined before `drop` returns.
 fn flush_and_drop(logger: Arc<Logger>) {
-  std::thread::sleep(std::time::Duration::from_millis(150));
   drop(logger);
 }
 
@@ -178,15 +180,14 @@ fn test_custom_formatter() {
 
   let logger = Builder::new()
     .capacity(128)
-    .format(|mut r: Record| {
-      r.content = format!(
+    .format(|record: &Record, _timestamp: &str, out: &mut String| {
+      write!(
+        out,
         "[{}][{}] {}",
-        r.namespace,
-        r.level,
-        String::from_utf8_lossy(&r.content)
+        record.namespace,
+        record.level,
+        String::from_utf8_lossy(&record.content)
       )
-      .into();
-      r
     })
     .add_flow(flow)
     .build_local()
@@ -198,6 +199,7 @@ fn test_custom_formatter() {
   let logs = output.lock().unwrap();
   assert_eq!(logs.len(), 1);
   assert!(logs[0].starts_with("[myns][INFO]"));
+  assert!(logs[0].contains("custom format msg"));
 }
 
 // ---- Test that uses build() (global installation) ----

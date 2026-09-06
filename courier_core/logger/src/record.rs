@@ -7,8 +7,10 @@ use crate::Level;
 ///
 /// Records are created through the logger's public methods (e.g.
 /// [`Logger::info`](crate::Logger::info)) or the convenience macros
-/// (`info!`, `warn!`, etc.). The [`DefaultFormatter`](crate::format::DefaultFormatter)
-/// consumes records to produce the final output format.
+/// (`info!`, `warn!`, etc.). The record's `content` is the **raw message
+/// payload**. The configured [`Format`](crate::Format) renders the record —
+/// metadata *and* payload — into the complete output line on the worker
+/// thread; flows write that rendered line verbatim.
 ///
 /// # Fields
 ///
@@ -16,7 +18,7 @@ use crate::Level;
 /// - `level` — severity level of the record.
 /// - `target` — optional flow name for targeted routing.
 /// - `namespace` — identifier for the source module or component.
-/// - `content` — the log message payload.
+/// - `content` — the log message payload (consumed by the formatter).
 pub struct Record {
   pub timestamp: i64,
   pub level: Level,

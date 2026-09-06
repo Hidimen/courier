@@ -1,3 +1,5 @@
+use std::any::Any;
+
 use crate::Event;
 
 pub struct ServerStart {
@@ -5,6 +7,10 @@ pub struct ServerStart {
 }
 
 impl Event for ServerStart {
+  fn as_any(&self) -> &dyn Any {
+    self
+  }
+
   fn name(&self) -> &'static str {
     "courier:server_start"
   }
@@ -15,6 +21,10 @@ pub struct ServerStop {
 }
 
 impl Event for ServerStop {
+  fn as_any(&self) -> &dyn Any {
+    self
+  }
+
   fn name(&self) -> &'static str {
     "courier:server_stop"
   }

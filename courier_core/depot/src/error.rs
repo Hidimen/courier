@@ -46,7 +46,7 @@ pub enum BuildError {
   #[error("logger is required but was not set")]
   MissingLogger,
 
-  /// EventBus was not set.
-  #[error("event_bus is required but was not set")]
-  MissingEventBus,
+  /// Dispatcher was not set.
+  #[error("dispatcher is required but was not set")]
+  MissingDispatcher,
 }

@@ -5,14 +5,20 @@
 //! file, or custom). Flows are composable via the [`Stack`](flow::Stack) type, allowing
 //! multiple destinations to be chained together.
 //!
-//! Log records pass through a user-configurable [`Format`] step before being
-//! dispatched to the registered flows. The default formatter
-//! ([`DefaultFormatter`]) produces a `[timestamp][LEVEL][namespace] message` layout.
+//! Log records are filtered at the call site, cross an internal channel and
+//! are rendered on a dedicated worker thread: the configured [`Format`] step
+//! writes the **complete** output line into a reusable buffer, and flows
+//! write that line verbatim. The formatter has full control of the layout —
+//! timestamps, levels, namespaces, payload placement, colours, JSON, … The
+//! default formatter ([`DefaultFormatter`]) produces a
+//! `[timestamp][LEVEL][namespace] message` layout.
 //!
 //! # Architecture
 //!
 //! ```text
-//! macro → Logger (channel) → logger thread → Format → Flow(s) → output
+//! macro → [level gate] → Logger (channel) → logger thread
+//!       → Format::format (cached timestamp, reusable buffer, full layout)
+//!       → Flow(s) write the rendered line → output
 //! ```
 //!
 //! # Quick start
@@ -34,10 +40,15 @@
 //! # Features
 //!
 //! - **Level filtering** — each flow declares its minimum [`Level`]; records
-//!   below that level are silently skipped.
+//!   below that level are silently skipped, and a cheap call-site gate
+//!   avoids formatting/allocating them at all.
 //! - **Target routing** — records carry an optional `target`; a flow only
 //!   accepts a record when its name matches the target.
-//! - **Custom formatters** — implement [`Format`] or pass a closure.
+//! - **Single-pass rendering** — the worker renders each record exactly once
+//!   into a reusable buffer; steady-state formatting allocates nothing and
+//!   flows never re-format.
+//! - **Full-layout formatters** — implement [`Format`] or pass a closure to
+//!   control the entire output text.
 //! - **Custom flows** — implement [`Flow`]; only `println` and `flush` are
 //!   required.
 
