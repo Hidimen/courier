@@ -1,8 +1,10 @@
 use std::{path::PathBuf, sync::Arc};
 
 use anyhow::Context;
+use chrono::Local;
 use clap::{Args, ValueEnum};
 use courier::depot::config::Config;
+use event::{event, events::ServerStop};
 use logger::Level;
 use tokio_util::sync::CancellationToken;
 
@@ -95,6 +97,12 @@ fn run_blocking(
       let token = cancellation_token.clone();
       tokio::spawn(async move {
         courier::depot::wait_for_termination().await;
+        event!(ServerStop {
+          time: {
+            let now = Local::now();
+            now.timestamp_millis()
+          }
+        });
         token.cancel();
       });
     }
@@ -172,14 +180,14 @@ mod windows {
     let event_handler = move |control_event| -> ServiceControlHandlerResult {
       match control_event {
         ServiceControl::Stop => {
-          stop_token.cancel();
-          if let Some(bus) = event::EventBus::try_get_instance() {
-            let _ = bus.emit(ServerStop {
+          if let Some(bus) = event::Dispatcher::try_get_instance() {
+            bus.emit(ServerStop {
               time: {
                 let now = Local::now();
                 now.timestamp_millis()
               },
             });
+            stop_token.cancel();
           }
           ServiceControlHandlerResult::NoError
         },

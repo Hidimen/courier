@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use event::EventBus;
+use event::Dispatcher;
 use logger::Logger;
 use network::transport::Transport;
 use relay::Pipeline;
@@ -16,7 +16,7 @@ use crate::{Depot, error::BuildError};
 /// use depot::Builder;
 /// use std::sync::Arc;
 ///
-/// use event::EventBus;
+/// use event::Dispatcher;
 ///
 /// # use logger::{Builder as LoggerBuilder, Level, Logger};
 /// # use network::transport::Transport;
@@ -63,7 +63,7 @@ use crate::{Depot, error::BuildError};
 ///     .protocol(MyProtocol)
 ///     .pipeline(my_pipeline())
 ///     .logger(my_logger())
-///     .event_bus(Arc::new(EventBus::default()))
+///     .dispatcher(Arc::new(Dispatcher::default()))
 ///     .build()
 ///     .expect("all required fields set");
 /// ```
@@ -73,7 +73,7 @@ pub struct Builder<T = (), P = (), M = ()> {
   protocol: Option<P>,
   pipeline: Option<Pipeline<M>>,
   logger: Option<Arc<Logger>>,
-  event_bus: Option<Arc<EventBus>>,
+  dispatcher: Option<Arc<Dispatcher>>,
   cancellation_token: Option<Arc<CancellationToken>>,
 }
 
@@ -93,7 +93,7 @@ impl Builder {
       protocol: None,
       pipeline: None,
       logger: None,
-      event_bus: None,
+      dispatcher: None,
       cancellation_token: None,
     }
   }
@@ -137,7 +137,7 @@ impl<T: Transport, P, M> Builder<T, P, M> {
       protocol: Some(protocol),
       pipeline: self.pipeline,
       logger: self.logger,
-      event_bus: self.event_bus,
+      dispatcher: self.dispatcher,
       cancellation_token: self.cancellation_token,
     }
   }
@@ -169,7 +169,7 @@ impl<T, P, M> Builder<T, P, M> {
       protocol: self.protocol,
       pipeline: self.pipeline,
       logger: self.logger,
-      event_bus: self.event_bus,
+      dispatcher: self.dispatcher,
       cancellation_token: self.cancellation_token,
     }
   }
@@ -202,7 +202,7 @@ impl<T, P, M> Builder<T, P, M> {
       protocol: self.protocol,
       pipeline: Some(pipeline),
       logger: self.logger,
-      event_bus: self.event_bus,
+      dispatcher: self.dispatcher,
       cancellation_token: self.cancellation_token,
     }
   }
@@ -232,7 +232,7 @@ impl<T, P, M> Builder<T, P, M> {
     self
   }
 
-  /// Sets the event_bus for the [`Depot`].
+  /// Sets the dispatcher for the [`Depot`].
   ///
   /// # Examples
   ///
@@ -240,13 +240,13 @@ impl<T, P, M> Builder<T, P, M> {
   /// use depot::Builder;
   /// use std::sync::Arc;
   ///
-  /// use event::EventBus;
+  /// use event::Dispatcher;
   ///
   /// let builder = Builder::new()
-  ///     .event_bus(Arc::new(EventBus::default()));
+  ///     .dispatcher(Arc::new(Dispatcher::default()));
   /// ```
-  pub fn event_bus(mut self, event_bus: Arc<EventBus>) -> Self {
-    self.event_bus = Some(event_bus);
+  pub fn dispatcher(mut self, dispatcher: Arc<Dispatcher>) -> Self {
+    self.dispatcher = Some(dispatcher);
     self
   }
 
@@ -286,7 +286,7 @@ impl<T, P, M> Builder<T, P, M> {
   /// use depot::Builder;
   /// use std::sync::Arc;
   ///
-  /// use event::EventBus;
+  /// use event::Dispatcher;
   ///
   /// # use logger::{Builder as LoggerBuilder, Level, Logger};
   /// # use network::transport::Transport;
@@ -322,7 +322,7 @@ impl<T, P, M> Builder<T, P, M> {
   ///     .protocol(MyProtocol)
   ///     .pipeline(my_pipeline())
   ///     .logger(my_logger())
-  ///     .event_bus(Arc::new(EventBus::default()))
+  ///     .dispatcher(Arc::new(Dispatcher::default()))
   ///     .build()
   ///     .expect("all required fields set");
   ///
@@ -336,7 +336,7 @@ impl<T, P, M> Builder<T, P, M> {
       self.protocol.ok_or(BuildError::MissingProtocol)?,
       self.pipeline.ok_or(BuildError::MissingPipeline)?,
       self.logger.ok_or(BuildError::MissingLogger)?,
-      self.event_bus.ok_or(BuildError::MissingEventBus)?,
+      self.dispatcher.ok_or(BuildError::MissingDispatcher)?,
       self
         .cancellation_token
         .unwrap_or_else(|| Arc::new(CancellationToken::new())),
@@ -420,10 +420,10 @@ mod tests {
   }
 
   /// A stub event bus for testing.
-  fn stub_event_bus() -> Arc<EventBus> {
-    use event::EventBus;
+  fn stub_dispatcher() -> Arc<Dispatcher> {
+    use event::Dispatcher;
 
-    Arc::new(EventBus::default())
+    Arc::new(Dispatcher::default())
   }
 
   #[test]
@@ -433,7 +433,7 @@ mod tests {
       .protocol(StubProtocol)
       .pipeline(stub_pipeline())
       .logger(stub_logger())
-      .event_bus(stub_event_bus())
+      .dispatcher(stub_dispatcher())
       .build();
 
     assert!(depot.is_ok());
@@ -445,7 +445,7 @@ mod tests {
       .transport(StubTransport)
       .pipeline(stub_pipeline())
       .logger(stub_logger())
-      .event_bus(stub_event_bus())
+      .dispatcher(stub_dispatcher())
       .build();
 
     match result {
@@ -460,7 +460,7 @@ mod tests {
       .transport(StubTransport)
       .protocol(StubProtocol)
       .logger(stub_logger())
-      .event_bus(stub_event_bus())
+      .dispatcher(stub_dispatcher())
       .build();
 
     match result {
@@ -475,7 +475,7 @@ mod tests {
       .transport(StubTransport)
       .protocol(StubProtocol)
       .pipeline(stub_pipeline())
-      .event_bus(stub_event_bus())
+      .dispatcher(stub_dispatcher())
       .build();
 
     match result {
@@ -485,7 +485,7 @@ mod tests {
   }
 
   #[test]
-  fn build_without_event_bus_fails() {
+  fn build_without_dispatcher_fails() {
     let result = Builder::new()
       .transport(StubTransport)
       .protocol(StubProtocol)
@@ -494,7 +494,7 @@ mod tests {
       .build();
 
     match result {
-      Err(e) => assert!(e.to_string().contains("event_bus")),
+      Err(e) => assert!(e.to_string().contains("dispatcher")),
       Ok(_) => panic!("expected build to fail without logger"),
     }
   }

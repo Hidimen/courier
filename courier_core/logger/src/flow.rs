@@ -8,10 +8,18 @@ use crate::{HandlingKind, Level, record::Record};
 ///
 /// # Required methods
 ///
-/// - [`println`](Flow::println) — handles a single record after formatting.
+/// - [`println`](Flow::println) — handles a single formatted record.
 /// - [`flush`](Flow::flush) — flushes any buffered data.
 /// - [`level`](Flow::level) — returns the minimum [`Level`] this flow accepts.
 /// - [`name`](Flow::name) — returns a unique name used for target routing.
+///
+/// # Single-pass rendering
+///
+/// The logger's worker thread renders each record **once** through the
+/// configured [`Format`](crate::Format), producing the complete final text
+/// (`line`) into a reusable buffer, and then hands every accepting flow the
+/// same line. Flows are pure sinks: they write `line` verbatim and never
+/// re-format the record.
 ///
 /// # Target routing
 ///
@@ -29,9 +37,9 @@ use crate::{HandlingKind, Level, record::Record};
 /// struct MyFlow { min_level: Level }
 ///
 /// impl Flow for MyFlow {
-///     fn println(&mut self, record: Record) -> Result<Record, HandlingKind> {
-///         // Write `record.content` somewhere.
-///         Ok(record)
+///     fn println(&mut self, _record: &Record, line: &str) -> Result<(), HandlingKind> {
+///         // `line` is the fully rendered output; write it wherever this flow sinks.
+///         Ok(())
 ///     }
 ///
 ///     fn flush(&mut self) -> Result<(), HandlingKind> {
@@ -48,11 +56,16 @@ use crate::{HandlingKind, Level, record::Record};
 /// }
 /// ```
 pub trait Flow: Send + 'static {
-  /// Handles a single log record after formatting.
+  /// Writes one fully rendered record.
   ///
-  /// Returns the record on success so it can be passed to the next flow in
-  /// the chain.
-  fn println(&mut self, record: Record) -> Result<Record, HandlingKind>;
+  /// `line` is the complete output produced by the configured
+  /// [`Format`](crate::Format) — timestamps, levels, namespaces and payload
+  /// included, in whatever layout the formatter chose. Sinks must treat it as
+  /// the final text and write it verbatim. The `record` argument is provided
+  /// for metadata reads only; do not re-format from it.
+  fn println(
+    &mut self, record: &Record, line: &str,
+  ) -> Result<(), HandlingKind>;
 
   /// Flushes any buffered data to the underlying destination.
   fn flush(&mut self) -> Result<(), HandlingKind>;
@@ -72,6 +85,18 @@ pub trait Flow: Send + 'static {
 
   /// Returns the unique name of this flow, used for target routing.
   fn name(&self) -> &'static str;
+
+  /// Returns the lowest level at which this flow could *possibly* accept a
+  /// record (ignoring target routing).
+  ///
+  /// Used to compute a cheap, conservative gate at the logging call site so
+  /// that messages a logger can never emit are discarded before formatting
+  /// and before crossing the channel. For a single flow this is exactly
+  /// [`level()`](Flow::level); [`Stack`] overrides it with the minimum of
+  /// both halves and [`Identity`] with `Fatal` (it never accepts anything).
+  fn min_level(&self) -> Level {
+    self.level()
+  }
 }
 
 /// A no-op flow that serves as the terminator of a [`Stack`].
@@ -82,8 +107,10 @@ pub trait Flow: Send + 'static {
 pub struct Identity;
 
 impl Flow for Identity {
-  fn println(&mut self, record: Record) -> Result<Record, HandlingKind> {
-    Ok(record)
+  fn println(
+    &mut self, _record: &Record, _line: &str,
+  ) -> Result<(), HandlingKind> {
+    Ok(())
   }
 
   fn flush(&mut self) -> Result<(), HandlingKind> {
@@ -121,14 +148,14 @@ impl Flow for Identity {
 /// // Two structs each implementing Flow (omitted for brevity — see `Flow`).
 /// # struct A(Level, &'static str);
 /// # impl Flow for A {
-/// #  fn println(&mut self, r: Record) -> Result<Record, HandlingKind> { Ok(r) }
+/// #  fn println(&mut self, _r: &Record, _h: &str) -> Result<(), HandlingKind> { Ok(()) }
 /// #  fn flush(&mut self) -> Result<(), HandlingKind> { Ok(()) }
 /// #  fn level(&self) -> Level { self.0 }
 /// #  fn name(&self) -> &'static str { self.1 }
 /// # }
 /// # struct B(Level, &'static str);
 /// # impl Flow for B {
-/// #  fn println(&mut self, r: Record) -> Result<Record, HandlingKind> { Ok(r) }
+/// #  fn println(&mut self, _r: &Record, _h: &str) -> Result<(), HandlingKind> { Ok(()) }
 /// #  fn flush(&mut self) -> Result<(), HandlingKind> { Ok(()) }
 /// #  fn level(&self) -> Level { self.0 }
 /// #  fn name(&self) -> &'static str { self.1 }
@@ -145,16 +172,24 @@ pub struct Stack<F: Flow, S: Flow> {
 }
 
 impl<F: Flow, S: Flow> Flow for Stack<F, S> {
-  fn println(&mut self, record: Record) -> Result<Record, HandlingKind> {
-    if self.inner.can_log(&record) && self.next.can_log(&record) {
-      self.inner.println(self.next.println(record)?)
-    } else if self.inner.can_log(&record) && !(self.next.can_log(&record)) {
-      self.inner.println(record)
-    } else if !(self.inner.can_log(&record)) && self.next.can_log(&record) {
-      self.next.println(record)
-    } else {
-      Ok(record)
+  fn println(
+    &mut self, record: &Record, line: &str,
+  ) -> Result<(), HandlingKind> {
+    // Evaluate each node's filter exactly once, then dispatch to the
+    // accepting subset. `next` processes first, then `inner`, mirroring the
+    // previous value-passing pipeline (where `next` ran before `inner`).
+    let inner_accepts = self.inner.can_log(record);
+    let next_accepts = self.next.can_log(record);
+    match (inner_accepts, next_accepts) {
+      (true, true) => {
+        self.next.println(record, line)?;
+        self.inner.println(record, line)?;
+      },
+      (true, false) => self.inner.println(record, line)?,
+      (false, true) => self.next.println(record, line)?,
+      (false, false) => {},
     }
+    Ok(())
   }
 
   fn flush(&mut self) -> Result<(), HandlingKind> {
@@ -172,6 +207,10 @@ impl<F: Flow, S: Flow> Flow for Stack<F, S> {
 
   fn name(&self) -> &'static str {
     self.inner.name()
+  }
+
+  fn min_level(&self) -> Level {
+    std::cmp::min(self.inner.min_level(), self.next.min_level())
   }
 }
 
@@ -201,10 +240,11 @@ mod tests {
   }
 
   impl Flow for TestFlow {
-    fn println(&mut self, record: Record) -> Result<Record, HandlingKind> {
-      let content = String::from_utf8(record.content.to_vec()).unwrap();
-      self.output.lock().unwrap().push(format!("[{}]{}", self.prefix, content));
-      Ok(record)
+    fn println(
+      &mut self, _record: &Record, line: &str,
+    ) -> Result<(), HandlingKind> {
+      self.output.lock().unwrap().push(format!("[{}]{line}", self.prefix));
+      Ok(())
     }
 
     fn flush(&mut self) -> Result<(), HandlingKind> {
@@ -241,11 +281,12 @@ mod tests {
   }
 
   #[test]
-  fn identity_println_passes_through() {
+  fn identity_println_is_ok() {
     let mut identity = Identity;
     let record = make_record("test", None);
-    let result = identity.println(record).unwrap();
-    assert_eq!(&result.content[..], b"test");
+    let result = identity.println(&record, "");
+    assert!(result.is_ok());
+    assert_eq!(&record.content[..], b"test");
   }
 
   #[test]
@@ -256,6 +297,11 @@ mod tests {
   #[test]
   fn identity_name_is_identity() {
     assert_eq!(Identity.name(), "Identity");
+  }
+
+  #[test]
+  fn identity_min_level_is_fatal() {
+    assert_eq!(Identity.min_level(), Level::Fatal);
   }
 
   #[test]
@@ -274,14 +320,31 @@ mod tests {
     let mut stack = Stack { inner, next };
 
     let record = make_record("chain", None);
-    stack.println(record).unwrap();
+    stack.println(&record, "chain\n").unwrap();
 
     let logs = output.lock().unwrap();
-    // next processes first (inner.println(next.println(record)?)?)
-    // Both flows see the same original record content since println passes it through
+    // `next` processes first, then `inner`.
     assert_eq!(logs.len(), 2);
     assert!(logs[0].contains("[NEXT]chain"));
     assert!(logs[1].contains("[INNER]chain"));
+  }
+
+  #[test]
+  fn stack_rendered_line_is_forwarded_to_all() {
+    let output = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let inner = TestFlow::new(Level::Trace, "inner", "INNER", output.clone());
+    let next = TestFlow::new(Level::Trace, "next", "NEXT", output.clone());
+    let mut stack = Stack { inner, next };
+
+    let record = make_record("payload", None);
+    stack
+      .println(&record, "[2026-01-02 03:04:05][INFO][test] payload\n")
+      .unwrap();
+
+    let logs = output.lock().unwrap();
+    assert_eq!(logs.len(), 2);
+    assert!(logs[0].contains("[2026-01-02 03:04:05][INFO][test] payload"));
+    assert!(logs[1].contains("[2026-01-02 03:04:05][INFO][test] payload"));
   }
 
   #[test]
@@ -293,7 +356,7 @@ mod tests {
     let mut stack = Stack { inner, next };
 
     let record = make_record("only_inner", None);
-    stack.println(record).unwrap();
+    stack.println(&record, "only_inner\n").unwrap();
 
     let logs = output.lock().unwrap();
     assert_eq!(logs.len(), 1);
@@ -308,7 +371,7 @@ mod tests {
     let mut stack = Stack { inner, next };
 
     let record = make_record("only_next", None);
-    stack.println(record).unwrap();
+    stack.println(&record, "only_next\n").unwrap();
 
     let logs = output.lock().unwrap();
     assert_eq!(logs.len(), 1);
@@ -316,18 +379,19 @@ mod tests {
   }
 
   #[test]
-  fn stack_neither_can_log_returns_record_unchanged() {
+  fn stack_neither_can_log_is_noop() {
     let output = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
     let inner = TestFlow::new(Level::Error, "inner", "INNER", output.clone());
     let next = TestFlow::new(Level::Error, "next", "NEXT", output.clone());
     let mut stack = Stack { inner, next };
 
     let record = make_record("neither", None);
-    let result = stack.println(record).unwrap();
+    let result = stack.println(&record, "neither\n");
+    assert!(result.is_ok());
 
     let logs = output.lock().unwrap();
     assert!(logs.is_empty());
-    assert_eq!(&result.content[..], b"neither");
+    assert_eq!(&record.content[..], b"neither");
   }
 
   #[test]
@@ -339,13 +403,6 @@ mod tests {
 
     // Info: inner (Error) can't, next (Trace) can → OR = true
     assert!(stack.can_log(&make_record("", None)));
-
-    // Info with target matching inner's name though
-    // can_log default: name() == record.target.unwrap_or(name()) && level() <= record.level
-    // Since both use default can_log, need to check the logic
-    // Actually, TestFlow uses the default Flow::can_log, which checks name match + level
-    // For a record with no target (None), can_log checks name() == name() (always true)
-    // So only level matters for None target
   }
 
   #[test]
@@ -355,10 +412,9 @@ mod tests {
     let next = TestFlow::new(Level::Trace, "next", "NEXT", output.clone());
     let stack = Stack { inner, next };
 
-    // Record targeted at "inner" — only inner can log
+    // Record targeted at "inner" — inner can log, so OR is true
     let record = make_record("targeted", Some("inner"));
-    // We can't easily test println details here, but we can check can_log
-    assert!(stack.can_log(&record)); // inner can log, so OR is true
+    assert!(stack.can_log(&record));
 
     // Record targeted at "both" — neither matches
     let record = make_record("targeted", Some("both"));
@@ -398,5 +454,20 @@ mod tests {
     let stack = Stack { inner, next };
 
     assert_eq!(stack.name(), "inner");
+  }
+
+  #[test]
+  fn stack_min_level_is_min_of_children() {
+    let output = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let inner = TestFlow::new(Level::Info, "inner", "INNER", output.clone());
+    let next = TestFlow::new(Level::Trace, "next", "NEXT", output.clone());
+    let stack = Stack { inner, next };
+
+    assert_eq!(stack.min_level(), Level::Trace);
+
+    let inner = TestFlow::new(Level::Warn, "inner", "INNER", output.clone());
+    let next = TestFlow::new(Level::Error, "next", "NEXT", output.clone());
+    let stack = Stack { inner, next };
+    assert_eq!(stack.min_level(), Level::Warn);
   }
 }

@@ -1,15 +1,12 @@
 pub mod error;
 mod event;
-mod event_bus;
-mod event_handler;
-mod subscribe;
 #[macro_use]
 mod macros;
 mod config;
+mod dispatcher;
 pub mod events;
+pub mod listener;
 
 pub use config::Config;
+pub use dispatcher::Dispatcher;
 pub use event::Event;
-pub use event_bus::EventBus;
-pub use event_handler::*;
-pub use subscribe::{Subscriber, Subscription};

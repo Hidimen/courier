@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use event::EventBus;
+use event::Dispatcher;
 use logger::{
   DefaultFormatter, FormatConfig, PrettyFormatter, flows::ConsoleFlow, info,
 };
@@ -131,7 +131,7 @@ pub trait StreamProvider: Sized {
           .build()
           .expect("Unable to create a logger"),
       };
-      let event_bus = EventBus::new(config.server.event.capacity).install();
+      let dispatcher = Dispatcher::new(config.server.event.capacity).install();
 
       logger::info!("Listening on {}", config.server.address);
 
@@ -140,7 +140,7 @@ pub trait StreamProvider: Sized {
         .protocol(protocol)
         .pipeline(pipeline)
         .logger(logger)
-        .event_bus(event_bus)
+        .dispatcher(dispatcher)
         .cancellation_token(cancellation_token)
         .build()?;
 
@@ -269,7 +269,7 @@ pub trait DatagramProvider: Sized {
           .build()
           .expect("Unable to create a logger"),
       };
-      let event_bus = EventBus::new(config.server.event.capacity).install();
+      let dispatcher = Dispatcher::new(config.server.event.capacity).install();
 
       info!("Listening on {}", config.server.address);
 
@@ -278,7 +278,7 @@ pub trait DatagramProvider: Sized {
         .protocol(protocol)
         .pipeline(pipeline)
         .logger(logger)
-        .event_bus(event_bus)
+        .dispatcher(dispatcher)
         .cancellation_token(cancellation_token)
         .build()?;
 

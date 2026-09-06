@@ -8,9 +8,11 @@ use crate::{HandlingKind, Level, Record, flow::Flow};
 
 /// A flow that writes log records to a file.
 ///
-/// Records are appended to the file behind a [`BufWriter`], so writes are
-/// buffered for efficiency. Call [`flush`](Flow::flush) or drop the
-/// [`Logger`](crate::Logger) to ensure all data reaches disk.
+/// Records arrive as **fully rendered lines** (the formatter owns the layout,
+/// including the trailing newline) and are appended to the file behind a
+/// [`BufWriter`], so writes are buffered for efficiency. Call
+/// [`flush`](Flow::flush) or drop the [`Logger`](crate::Logger) to ensure all
+/// data reaches disk.
 ///
 /// # Panics
 ///
@@ -22,7 +24,11 @@ use crate::{HandlingKind, Level, Record, flow::Flow};
 /// use logger::{Builder, Level, Logger};
 /// use logger::flows::FileFlow;
 ///
-/// let logger = Logger::new(128, FileFlow::new(Level::Info, "app.log"), |r| r);
+/// let logger = Logger::new(
+///   128,
+///   FileFlow::new(Level::Info, "app.log"),
+///   |_record: &logger::Record, _timestamp: &str, _out: &mut String| Ok(()),
+/// );
 /// logger.info("Hello file!".into(), "demo");
 /// drop(logger); // flushes and closes
 /// ```
@@ -58,11 +64,11 @@ impl FileFlow {
 }
 
 impl Flow for FileFlow {
-  fn println(&mut self, record: Record) -> Result<Record, HandlingKind> {
-    self.buf.write_all(&record.content).map_err(|_| HandlingKind::Ignore)?;
-    self.buf.write_all(b"\n").map_err(|_| HandlingKind::Ignore)?;
-
-    Ok(record)
+  fn println(
+    &mut self, _record: &Record, line: &str,
+  ) -> Result<(), HandlingKind> {
+    self.buf.write_all(line.as_bytes()).map_err(|_| HandlingKind::Ignore)?;
+    Ok(())
   }
 
   fn flush(&mut self) -> Result<(), HandlingKind> {

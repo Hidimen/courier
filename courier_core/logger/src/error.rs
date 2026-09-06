@@ -7,7 +7,6 @@
 /// # Example
 ///
 /// ```rust
-/// # // This example is marked no_run due to OS execution policy.
 /// use logger::HandlingKind;
 ///
 /// let recoverable = HandlingKind::Ignore;

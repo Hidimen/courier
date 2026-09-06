@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use event::{EventBus, events};
+use event::Dispatcher;
 use logger::{Logger, error};
 use network::{
   KeepAlive,
@@ -15,7 +15,7 @@ use tokio_util::sync::CancellationToken;
 use crate::error::DepotError;
 
 /// A server instance that pairs a [`Transport`](network::transport::Transport), a [`Protocol`](protocol::Protocol), a
-/// [`Pipeline`] and an [`EventBus`].
+/// [`Pipeline`] and an [`Dispatcher`].
 ///
 /// The depot accepts connections, decodes incoming data, passes the
 /// decoded context through the middleware chain, encodes the result,
@@ -33,7 +33,7 @@ pub struct Depot<T, P, M> {
   protocol: Arc<P>,
   pipeline: Arc<Pipeline<M>>,
   logger: Arc<Logger>,
-  event_bus: Arc<EventBus>,
+  dispatcher: Arc<Dispatcher>,
   cancellation_token: Arc<CancellationToken>,
 }
 
@@ -43,17 +43,14 @@ impl<T, P, M> Depot<T, P, M> {
   /// shutdown.
   pub fn new(
     transport: T, protocol: P, pipeline: Pipeline<M>, logger: Arc<Logger>,
-    event_bus: Arc<EventBus>, cancellation_token: Arc<CancellationToken>,
+    dispatcher: Arc<Dispatcher>, cancellation_token: Arc<CancellationToken>,
   ) -> Self {
-    let _ = event_bus.register::<events::ServerStart>();
-    let _ = event_bus.register::<events::ServerStop>();
-
     Self {
       transport,
       protocol: Arc::new(protocol),
       pipeline: Arc::new(pipeline),
       logger,
-      event_bus,
+      dispatcher,
       cancellation_token,
     }
   }
@@ -73,9 +70,9 @@ impl<T, P, M> Depot<T, P, M> {
     self.logger.clone()
   }
 
-  /// Returns a cloned event_bus.
-  pub fn event_bus(&self) -> Arc<EventBus> {
-    self.event_bus.clone()
+  /// Returns a cloned dispatcher.
+  pub fn dispatcher(&self) -> Arc<Dispatcher> {
+    self.dispatcher.clone()
   }
 
   /// Returns a cancellation token.

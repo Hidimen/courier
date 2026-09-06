@@ -30,35 +30,47 @@ macro_rules! trace {
   // ── Named-key arms (before any generic $($fmt:tt)+) ──
 
   (namespace = $namespace:literal, $msg:literal) => {
-    $crate::Logger::get_instance().trace_from_static($msg, $namespace);
+    if $crate::Logger::is_enabled($crate::Level::Trace) {
+      $crate::Logger::get_instance().trace_from_static($msg, $namespace);
+    }
   };
 
   (namespace = $namespace:literal, $($fmt:tt)+) => {
-    $crate::Logger::get_instance()
-      .trace(format!($($fmt)+), $namespace);
+    if $crate::Logger::is_enabled($crate::Level::Trace) {
+      $crate::Logger::get_instance()
+        .trace(format!($($fmt)+), $namespace);
+    }
   };
 
   (target = $target:literal, namespace = $namespace:literal, $msg:literal) => {
-    $crate::Logger::get_instance()
-      .trace_from_static_with_target($msg, $namespace, $target);
+    if $crate::Logger::is_enabled($crate::Level::Trace) {
+      $crate::Logger::get_instance()
+        .trace_from_static_with_target($msg, $namespace, $target);
+    }
   };
 
   (target = $target:literal, namespace = $namespace:literal, $($fmt:tt)+) => {
-    $crate::Logger::get_instance()
-      .trace_with_target(format!($($fmt)+), $namespace, $target);
+    if $crate::Logger::is_enabled($crate::Level::Trace) {
+      $crate::Logger::get_instance()
+        .trace_with_target(format!($($fmt)+), $namespace, $target);
+    }
   };
 
   (target = $target:literal, $msg:literal) => {
-    $crate::Logger::get_instance()
-      .trace_from_static_with_target($msg, env!("CARGO_PKG_NAME"), $target);
+    if $crate::Logger::is_enabled($crate::Level::Trace) {
+      $crate::Logger::get_instance()
+        .trace_from_static_with_target($msg, env!("CARGO_PKG_NAME"), $target);
+    }
   };
 
   (target = $target:literal, $($fmt:tt)+) => {
-    $crate::Logger::get_instance().trace_with_target(
-      format!($($fmt)+),
-      env!("CARGO_PKG_NAME"),
-      $target,
-    );
+    if $crate::Logger::is_enabled($crate::Level::Trace) {
+      $crate::Logger::get_instance().trace_with_target(
+        format!($($fmt)+),
+        env!("CARGO_PKG_NAME"),
+        $target,
+      );
+    }
   };
 
   // ── Positional namespace (literal-first) ──
@@ -67,24 +79,32 @@ macro_rules! trace {
   // single-arg catch-all below.
 
   ($namespace:literal, $msg:literal) => {
-    $crate::Logger::get_instance().trace_from_static($msg, $namespace);
+    if $crate::Logger::is_enabled($crate::Level::Trace) {
+      $crate::Logger::get_instance().trace_from_static($msg, $namespace);
+    }
   };
 
   ($namespace:literal, $template:literal, $($arg:tt)*) => {
-    $crate::Logger::get_instance()
-      .trace(format!($template, $($arg)*), $namespace);
+    if $crate::Logger::is_enabled($crate::Level::Trace) {
+      $crate::Logger::get_instance()
+        .trace(format!($template, $($arg)*), $namespace);
+    }
   };
 
   // ── Default namespace (catch-all, LAST) ──
 
   ($msg:literal) => {
-    $crate::Logger::get_instance()
-      .trace_from_static($msg, env!("CARGO_PKG_NAME"));
+    if $crate::Logger::is_enabled($crate::Level::Trace) {
+      $crate::Logger::get_instance()
+        .trace_from_static($msg, env!("CARGO_PKG_NAME"));
+    }
   };
 
   ($($fmt:tt)+) => {
-    $crate::Logger::get_instance()
-      .trace(format!($($fmt)+), env!("CARGO_PKG_NAME"));
+    if $crate::Logger::is_enabled($crate::Level::Trace) {
+      $crate::Logger::get_instance()
+        .trace(format!($($fmt)+), env!("CARGO_PKG_NAME"));
+    }
   };
 }
 
@@ -116,43 +136,55 @@ macro_rules! try_trace {
   // ── Named-key arms (before any generic $($fmt:tt)+) ──
 
   (namespace = $namespace:literal, $msg:literal) => {
-    if let Some(instance) = $crate::Logger::try_get_instance() {
-      instance.trace_from_static($msg, $namespace);
+    if $crate::Logger::is_enabled($crate::Level::Trace) {
+      if let Some(instance) = $crate::Logger::try_get_instance() {
+        instance.trace_from_static($msg, $namespace);
+      }
     }
   };
 
   (namespace = $namespace:literal, $($fmt:tt)+) => {
-    if let Some(instance) = $crate::Logger::try_get_instance() {
-      instance.trace(format!($($fmt)+), $namespace);
+    if $crate::Logger::is_enabled($crate::Level::Trace) {
+      if let Some(instance) = $crate::Logger::try_get_instance() {
+        instance.trace(format!($($fmt)+), $namespace);
+      }
     }
   };
 
   (target = $target:literal, namespace = $namespace:literal, $msg:literal) => {
-    if let Some(instance) = $crate::Logger::try_get_instance() {
-      instance.trace_from_static_with_target($msg, $namespace, $target);
+    if $crate::Logger::is_enabled($crate::Level::Trace) {
+      if let Some(instance) = $crate::Logger::try_get_instance() {
+        instance.trace_from_static_with_target($msg, $namespace, $target);
+      }
     }
   };
 
   (target = $target:literal, namespace = $namespace:literal, $($fmt:tt)+) => {
-    if let Some(instance) = $crate::Logger::try_get_instance() {
-      instance.trace_with_target(format!($($fmt)+), $namespace, $target);
+    if $crate::Logger::is_enabled($crate::Level::Trace) {
+      if let Some(instance) = $crate::Logger::try_get_instance() {
+        instance.trace_with_target(format!($($fmt)+), $namespace, $target);
+      }
     }
   };
 
   (target = $target:literal, $msg:literal) => {
-    if let Some(instance) = $crate::Logger::try_get_instance() {
-      instance
-        .trace_from_static_with_target($msg, env!("CARGO_PKG_NAME"), $target);
+    if $crate::Logger::is_enabled($crate::Level::Trace) {
+      if let Some(instance) = $crate::Logger::try_get_instance() {
+        instance
+          .trace_from_static_with_target($msg, env!("CARGO_PKG_NAME"), $target);
+      }
     }
   };
 
   (target = $target:literal, $($fmt:tt)+) => {
-    if let Some(instance) = $crate::Logger::try_get_instance() {
-      instance.trace_with_target(
-        format!($($fmt)+),
-        env!("CARGO_PKG_NAME"),
-        $target,
-      );
+    if $crate::Logger::is_enabled($crate::Level::Trace) {
+      if let Some(instance) = $crate::Logger::try_get_instance() {
+        instance.trace_with_target(
+          format!($($fmt)+),
+          env!("CARGO_PKG_NAME"),
+          $target,
+        );
+      }
     }
   };
 
@@ -162,28 +194,36 @@ macro_rules! try_trace {
   // single-arg catch-all below.
 
   ($namespace:literal, $msg:literal) => {
-    if let Some(instance) = $crate::Logger::try_get_instance() {
-      instance.trace_from_static($msg, $namespace);
+    if $crate::Logger::is_enabled($crate::Level::Trace) {
+      if let Some(instance) = $crate::Logger::try_get_instance() {
+        instance.trace_from_static($msg, $namespace);
+      }
     }
   };
 
   ($namespace:literal, $template:literal, $($arg:tt)*) => {
-    if let Some(instance) = $crate::Logger::try_get_instance() {
-      instance.trace(format!($template, $($arg)*), $namespace);
+    if $crate::Logger::is_enabled($crate::Level::Trace) {
+      if let Some(instance) = $crate::Logger::try_get_instance() {
+        instance.trace(format!($template, $($arg)*), $namespace);
+      }
     }
   };
 
   // ── Default namespace (catch-all, LAST) ──
 
   ($msg:literal) => {
-    if let Some(instance) = $crate::Logger::try_get_instance() {
-      instance.trace_from_static($msg, env!("CARGO_PKG_NAME"));
+    if $crate::Logger::is_enabled($crate::Level::Trace) {
+      if let Some(instance) = $crate::Logger::try_get_instance() {
+        instance.trace_from_static($msg, env!("CARGO_PKG_NAME"));
+      }
     }
   };
 
   ($($fmt:tt)+) => {
-    if let Some(instance) = $crate::Logger::try_get_instance() {
-      instance.trace(format!($($fmt)+), env!("CARGO_PKG_NAME"));
+    if $crate::Logger::is_enabled($crate::Level::Trace) {
+      if let Some(instance) = $crate::Logger::try_get_instance() {
+        instance.trace(format!($($fmt)+), env!("CARGO_PKG_NAME"));
+      }
     }
   };
 }
@@ -218,54 +258,74 @@ macro_rules! try_trace {
 #[macro_export]
 macro_rules! debug {
   (namespace = $namespace:literal, $msg:literal) => {
-    $crate::Logger::get_instance().debug_from_static($msg, $namespace);
+    if $crate::Logger::is_enabled($crate::Level::Debug) {
+      $crate::Logger::get_instance().debug_from_static($msg, $namespace);
+    }
   };
 
   (namespace = $namespace:literal, $($fmt:tt)+) => {
-    $crate::Logger::get_instance()
-      .debug(format!($($fmt)+), $namespace);
+    if $crate::Logger::is_enabled($crate::Level::Debug) {
+      $crate::Logger::get_instance()
+        .debug(format!($($fmt)+), $namespace);
+    }
   };
 
   (target = $target:literal, namespace = $namespace:literal, $msg:literal) => {
-    $crate::Logger::get_instance()
-      .debug_from_static_with_target($msg, $namespace, $target);
+    if $crate::Logger::is_enabled($crate::Level::Debug) {
+      $crate::Logger::get_instance()
+        .debug_from_static_with_target($msg, $namespace, $target);
+    }
   };
 
   (target = $target:literal, namespace = $namespace:literal, $($fmt:tt)+) => {
-    $crate::Logger::get_instance()
-      .debug_with_target(format!($($fmt)+), $namespace, $target);
+    if $crate::Logger::is_enabled($crate::Level::Debug) {
+      $crate::Logger::get_instance()
+        .debug_with_target(format!($($fmt)+), $namespace, $target);
+    }
   };
 
   (target = $target:literal, $msg:literal) => {
-    $crate::Logger::get_instance()
-      .debug_from_static_with_target($msg, env!("CARGO_PKG_NAME"), $target);
+    if $crate::Logger::is_enabled($crate::Level::Debug) {
+      $crate::Logger::get_instance()
+        .debug_from_static_with_target($msg, env!("CARGO_PKG_NAME"), $target);
+    }
   };
 
   (target = $target:literal, $($fmt:tt)+) => {
-    $crate::Logger::get_instance().debug_with_target(
-      format!($($fmt)+),
-      env!("CARGO_PKG_NAME"),
-      $target,
-    );
+    if $crate::Logger::is_enabled($crate::Level::Debug) {
+      $crate::Logger::get_instance().debug_with_target(
+        format!($($fmt)+),
+        env!("CARGO_PKG_NAME"),
+        $target,
+      );
+    }
   };
 
   ($namespace:literal, $msg:literal) => {
-    $crate::Logger::get_instance().debug_from_static($msg, $namespace);
+    if $crate::Logger::is_enabled($crate::Level::Debug) {
+      $crate::Logger::get_instance().debug_from_static($msg, $namespace);
+    }
   };
 
   ($namespace:literal, $template:literal, $($arg:tt)*) => {
-    $crate::Logger::get_instance()
-      .debug(format!($template, $($arg)*), $namespace);
+    if $crate::Logger::is_enabled($crate::Level::Debug) {
+      $crate::Logger::get_instance()
+        .debug(format!($template, $($arg)*), $namespace);
+    }
   };
 
   ($msg:literal) => {
-    $crate::Logger::get_instance()
-      .debug_from_static($msg, env!("CARGO_PKG_NAME"));
+    if $crate::Logger::is_enabled($crate::Level::Debug) {
+      $crate::Logger::get_instance()
+        .debug_from_static($msg, env!("CARGO_PKG_NAME"));
+    }
   };
 
   ($($fmt:tt)+) => {
-    $crate::Logger::get_instance()
-      .debug(format!($($fmt)+), env!("CARGO_PKG_NAME"));
+    if $crate::Logger::is_enabled($crate::Level::Debug) {
+      $crate::Logger::get_instance()
+        .debug(format!($($fmt)+), env!("CARGO_PKG_NAME"));
+    }
   };
 }
 
@@ -298,43 +358,55 @@ macro_rules! try_debug {
   // ── Named-key arms (before any generic $($fmt:tt)+) ──
 
   (namespace = $namespace:literal, $msg:literal) => {
-    if let Some(instance) = $crate::Logger::try_get_instance() {
-      instance.debug_from_static($msg, $namespace);
+    if $crate::Logger::is_enabled($crate::Level::Debug) {
+      if let Some(instance) = $crate::Logger::try_get_instance() {
+        instance.debug_from_static($msg, $namespace);
+      }
     }
   };
 
   (namespace = $namespace:literal, $($fmt:tt)+) => {
-    if let Some(instance) = $crate::Logger::try_get_instance() {
-      instance.debug(format!($($fmt)+), $namespace);
+    if $crate::Logger::is_enabled($crate::Level::Debug) {
+      if let Some(instance) = $crate::Logger::try_get_instance() {
+        instance.debug(format!($($fmt)+), $namespace);
+      }
     }
   };
 
   (target = $target:literal, namespace = $namespace:literal, $msg:literal) => {
-    if let Some(instance) = $crate::Logger::try_get_instance() {
-      instance.debug_from_static_with_target($msg, $namespace, $target);
+    if $crate::Logger::is_enabled($crate::Level::Debug) {
+      if let Some(instance) = $crate::Logger::try_get_instance() {
+        instance.debug_from_static_with_target($msg, $namespace, $target);
+      }
     }
   };
 
   (target = $target:literal, namespace = $namespace:literal, $($fmt:tt)+) => {
-    if let Some(instance) = $crate::Logger::try_get_instance() {
-      instance.debug_with_target(format!($($fmt)+), $namespace, $target);
+    if $crate::Logger::is_enabled($crate::Level::Debug) {
+      if let Some(instance) = $crate::Logger::try_get_instance() {
+        instance.debug_with_target(format!($($fmt)+), $namespace, $target);
+      }
     }
   };
 
   (target = $target:literal, $msg:literal) => {
-    if let Some(instance) = $crate::Logger::try_get_instance() {
-      instance
-        .debug_from_static_with_target($msg, env!("CARGO_PKG_NAME"), $target);
+    if $crate::Logger::is_enabled($crate::Level::Debug) {
+      if let Some(instance) = $crate::Logger::try_get_instance() {
+        instance
+          .debug_from_static_with_target($msg, env!("CARGO_PKG_NAME"), $target);
+      }
     }
   };
 
   (target = $target:literal, $($fmt:tt)+) => {
-    if let Some(instance) = $crate::Logger::try_get_instance() {
-      instance.debug_with_target(
-        format!($($fmt)+),
-        env!("CARGO_PKG_NAME"),
-        $target,
-      );
+    if $crate::Logger::is_enabled($crate::Level::Debug) {
+      if let Some(instance) = $crate::Logger::try_get_instance() {
+        instance.debug_with_target(
+          format!($($fmt)+),
+          env!("CARGO_PKG_NAME"),
+          $target,
+        );
+      }
     }
   };
 
@@ -344,28 +416,36 @@ macro_rules! try_debug {
   // single-arg catch-all below.
 
   ($namespace:literal, $msg:literal) => {
-    if let Some(instance) = $crate::Logger::try_get_instance() {
-      instance.debug_from_static($msg, $namespace);
+    if $crate::Logger::is_enabled($crate::Level::Debug) {
+      if let Some(instance) = $crate::Logger::try_get_instance() {
+        instance.debug_from_static($msg, $namespace);
+      }
     }
   };
 
   ($namespace:literal, $template:literal, $($arg:tt)*) => {
-    if let Some(instance) = $crate::Logger::try_get_instance() {
-      instance.debug(format!($template, $($arg)*), $namespace);
+    if $crate::Logger::is_enabled($crate::Level::Debug) {
+      if let Some(instance) = $crate::Logger::try_get_instance() {
+        instance.debug(format!($template, $($arg)*), $namespace);
+      }
     }
   };
 
   // ── Default namespace (catch-all, LAST) ──
 
   ($msg:literal) => {
-    if let Some(instance) = $crate::Logger::try_get_instance() {
-      instance.debug_from_static($msg, env!("CARGO_PKG_NAME"));
+    if $crate::Logger::is_enabled($crate::Level::Debug) {
+      if let Some(instance) = $crate::Logger::try_get_instance() {
+        instance.debug_from_static($msg, env!("CARGO_PKG_NAME"));
+      }
     }
   };
 
   ($($fmt:tt)+) => {
-    if let Some(instance) = $crate::Logger::try_get_instance() {
-      instance.debug(format!($($fmt)+), env!("CARGO_PKG_NAME"));
+    if $crate::Logger::is_enabled($crate::Level::Debug) {
+      if let Some(instance) = $crate::Logger::try_get_instance() {
+        instance.debug(format!($($fmt)+), env!("CARGO_PKG_NAME"));
+      }
     }
   };
 }
@@ -402,54 +482,74 @@ macro_rules! try_debug {
 #[macro_export]
 macro_rules! info {
   (namespace = $namespace:literal, $msg:literal) => {
-    $crate::Logger::get_instance().info_from_static($msg, $namespace);
+    if $crate::Logger::is_enabled($crate::Level::Info) {
+      $crate::Logger::get_instance().info_from_static($msg, $namespace);
+    }
   };
 
   (namespace = $namespace:literal, $($fmt:tt)+) => {
-    $crate::Logger::get_instance()
-      .info(format!($($fmt)+), $namespace);
+    if $crate::Logger::is_enabled($crate::Level::Info) {
+      $crate::Logger::get_instance()
+        .info(format!($($fmt)+), $namespace);
+    }
   };
 
   (target = $target:literal, namespace = $namespace:literal, $msg:literal) => {
-    $crate::Logger::get_instance()
-      .info_from_static_with_target($msg, $namespace, $target);
+    if $crate::Logger::is_enabled($crate::Level::Info) {
+      $crate::Logger::get_instance()
+        .info_from_static_with_target($msg, $namespace, $target);
+    }
   };
 
   (target = $target:literal, namespace = $namespace:literal, $($fmt:tt)+) => {
-    $crate::Logger::get_instance()
-      .info_with_target(format!($($fmt)+), $namespace, $target);
+    if $crate::Logger::is_enabled($crate::Level::Info) {
+      $crate::Logger::get_instance()
+        .info_with_target(format!($($fmt)+), $namespace, $target);
+    }
   };
 
   (target = $target:literal, $msg:literal) => {
-    $crate::Logger::get_instance()
-      .info_from_static_with_target($msg, env!("CARGO_PKG_NAME"), $target);
+    if $crate::Logger::is_enabled($crate::Level::Info) {
+      $crate::Logger::get_instance()
+        .info_from_static_with_target($msg, env!("CARGO_PKG_NAME"), $target);
+    }
   };
 
   (target = $target:literal, $($fmt:tt)+) => {
-    $crate::Logger::get_instance().info_with_target(
-      format!($($fmt)+),
-      env!("CARGO_PKG_NAME"),
-      $target,
-    );
+    if $crate::Logger::is_enabled($crate::Level::Info) {
+      $crate::Logger::get_instance().info_with_target(
+        format!($($fmt)+),
+        env!("CARGO_PKG_NAME"),
+        $target,
+      );
+    }
   };
 
   ($namespace:literal, $msg:literal) => {
-    $crate::Logger::get_instance().info_from_static($msg, $namespace);
+    if $crate::Logger::is_enabled($crate::Level::Info) {
+      $crate::Logger::get_instance().info_from_static($msg, $namespace);
+    }
   };
 
   ($namespace:literal, $template:literal, $($arg:tt)*) => {
-    $crate::Logger::get_instance()
-      .info(format!($template, $($arg)*), $namespace);
+    if $crate::Logger::is_enabled($crate::Level::Info) {
+      $crate::Logger::get_instance()
+        .info(format!($template, $($arg)*), $namespace);
+    }
   };
 
   ($msg:literal) => {
-    $crate::Logger::get_instance()
-      .info_from_static($msg, env!("CARGO_PKG_NAME"));
+    if $crate::Logger::is_enabled($crate::Level::Info) {
+      $crate::Logger::get_instance()
+        .info_from_static($msg, env!("CARGO_PKG_NAME"));
+    }
   };
 
   ($($fmt:tt)+) => {
-    $crate::Logger::get_instance()
-      .info(format!($($fmt)+), env!("CARGO_PKG_NAME"));
+    if $crate::Logger::is_enabled($crate::Level::Info) {
+      $crate::Logger::get_instance()
+        .info(format!($($fmt)+), env!("CARGO_PKG_NAME"));
+    }
   };
 }
 
@@ -484,43 +584,55 @@ macro_rules! try_info {
   // ── Named-key arms (before any generic $($fmt:tt)+) ──
 
   (namespace = $namespace:literal, $msg:literal) => {
-    if let Some(instance) = $crate::Logger::try_get_instance() {
-      instance.info_from_static($msg, $namespace);
+    if $crate::Logger::is_enabled($crate::Level::Info) {
+      if let Some(instance) = $crate::Logger::try_get_instance() {
+        instance.info_from_static($msg, $namespace);
+      }
     }
   };
 
   (namespace = $namespace:literal, $($fmt:tt)+) => {
-    if let Some(instance) = $crate::Logger::try_get_instance() {
-      instance.info(format!($($fmt)+), $namespace);
+    if $crate::Logger::is_enabled($crate::Level::Info) {
+      if let Some(instance) = $crate::Logger::try_get_instance() {
+        instance.info(format!($($fmt)+), $namespace);
+      }
     }
   };
 
   (target = $target:literal, namespace = $namespace:literal, $msg:literal) => {
-    if let Some(instance) = $crate::Logger::try_get_instance() {
-      instance.info_from_static_with_target($msg, $namespace, $target);
+    if $crate::Logger::is_enabled($crate::Level::Info) {
+      if let Some(instance) = $crate::Logger::try_get_instance() {
+        instance.info_from_static_with_target($msg, $namespace, $target);
+      }
     }
   };
 
   (target = $target:literal, namespace = $namespace:literal, $($fmt:tt)+) => {
-    if let Some(instance) = $crate::Logger::try_get_instance() {
-      instance.info_with_target(format!($($fmt)+), $namespace, $target);
+    if $crate::Logger::is_enabled($crate::Level::Info) {
+      if let Some(instance) = $crate::Logger::try_get_instance() {
+        instance.info_with_target(format!($($fmt)+), $namespace, $target);
+      }
     }
   };
 
   (target = $target:literal, $msg:literal) => {
-    if let Some(instance) = $crate::Logger::try_get_instance() {
-      instance
-        .info_from_static_with_target($msg, env!("CARGO_PKG_NAME"), $target);
+    if $crate::Logger::is_enabled($crate::Level::Info) {
+      if let Some(instance) = $crate::Logger::try_get_instance() {
+        instance
+          .info_from_static_with_target($msg, env!("CARGO_PKG_NAME"), $target);
+      }
     }
   };
 
   (target = $target:literal, $($fmt:tt)+) => {
-    if let Some(instance) = $crate::Logger::try_get_instance() {
-      instance.info_with_target(
-        format!($($fmt)+),
-        env!("CARGO_PKG_NAME"),
-        $target,
-      );
+    if $crate::Logger::is_enabled($crate::Level::Info) {
+      if let Some(instance) = $crate::Logger::try_get_instance() {
+        instance.info_with_target(
+          format!($($fmt)+),
+          env!("CARGO_PKG_NAME"),
+          $target,
+        );
+      }
     }
   };
 
@@ -530,28 +642,36 @@ macro_rules! try_info {
   // single-arg catch-all below.
 
   ($namespace:literal, $msg:literal) => {
-    if let Some(instance) = $crate::Logger::try_get_instance() {
-      instance.info_from_static($msg, $namespace);
+    if $crate::Logger::is_enabled($crate::Level::Info) {
+      if let Some(instance) = $crate::Logger::try_get_instance() {
+        instance.info_from_static($msg, $namespace);
+      }
     }
   };
 
   ($namespace:literal, $template:literal, $($arg:tt)*) => {
-    if let Some(instance) = $crate::Logger::try_get_instance() {
-      instance.info(format!($template, $($arg)*), $namespace);
+    if $crate::Logger::is_enabled($crate::Level::Info) {
+      if let Some(instance) = $crate::Logger::try_get_instance() {
+        instance.info(format!($template, $($arg)*), $namespace);
+      }
     }
   };
 
   // ── Default namespace (catch-all, LAST) ──
 
   ($msg:literal) => {
-    if let Some(instance) = $crate::Logger::try_get_instance() {
-      instance.info_from_static($msg, env!("CARGO_PKG_NAME"));
+    if $crate::Logger::is_enabled($crate::Level::Info) {
+      if let Some(instance) = $crate::Logger::try_get_instance() {
+        instance.info_from_static($msg, env!("CARGO_PKG_NAME"));
+      }
     }
   };
 
   ($($fmt:tt)+) => {
-    if let Some(instance) = $crate::Logger::try_get_instance() {
-      instance.info(format!($($fmt)+), env!("CARGO_PKG_NAME"));
+    if $crate::Logger::is_enabled($crate::Level::Info) {
+      if let Some(instance) = $crate::Logger::try_get_instance() {
+        instance.info(format!($($fmt)+), env!("CARGO_PKG_NAME"));
+      }
     }
   };
 }
@@ -586,54 +706,74 @@ macro_rules! try_info {
 #[macro_export]
 macro_rules! warn {
   (namespace = $namespace:literal, $msg:literal) => {
-    $crate::Logger::get_instance().warn_from_static($msg, $namespace);
+    if $crate::Logger::is_enabled($crate::Level::Warn) {
+      $crate::Logger::get_instance().warn_from_static($msg, $namespace);
+    }
   };
 
   (namespace = $namespace:literal, $($fmt:tt)+) => {
-    $crate::Logger::get_instance()
-      .warn(format!($($fmt)+), $namespace);
+    if $crate::Logger::is_enabled($crate::Level::Warn) {
+      $crate::Logger::get_instance()
+        .warn(format!($($fmt)+), $namespace);
+    }
   };
 
   (target = $target:literal, namespace = $namespace:literal, $msg:literal) => {
-    $crate::Logger::get_instance()
-      .warn_from_static_with_target($msg, $namespace, $target);
+    if $crate::Logger::is_enabled($crate::Level::Warn) {
+      $crate::Logger::get_instance()
+        .warn_from_static_with_target($msg, $namespace, $target);
+    }
   };
 
   (target = $target:literal, namespace = $namespace:literal, $($fmt:tt)+) => {
-    $crate::Logger::get_instance()
-      .warn_with_target(format!($($fmt)+), $namespace, $target);
+    if $crate::Logger::is_enabled($crate::Level::Warn) {
+      $crate::Logger::get_instance()
+        .warn_with_target(format!($($fmt)+), $namespace, $target);
+    }
   };
 
   (target = $target:literal, $msg:literal) => {
-    $crate::Logger::get_instance()
-      .warn_from_static_with_target($msg, env!("CARGO_PKG_NAME"), $target);
+    if $crate::Logger::is_enabled($crate::Level::Warn) {
+      $crate::Logger::get_instance()
+        .warn_from_static_with_target($msg, env!("CARGO_PKG_NAME"), $target);
+    }
   };
 
   (target = $target:literal, $($fmt:tt)+) => {
-    $crate::Logger::get_instance().warn_with_target(
-      format!($($fmt)+),
-      env!("CARGO_PKG_NAME"),
-      $target,
-    );
+    if $crate::Logger::is_enabled($crate::Level::Warn) {
+      $crate::Logger::get_instance().warn_with_target(
+        format!($($fmt)+),
+        env!("CARGO_PKG_NAME"),
+        $target,
+      );
+    }
   };
 
   ($namespace:literal, $msg:literal) => {
-    $crate::Logger::get_instance().warn_from_static($msg, $namespace);
+    if $crate::Logger::is_enabled($crate::Level::Warn) {
+      $crate::Logger::get_instance().warn_from_static($msg, $namespace);
+    }
   };
 
   ($namespace:literal, $template:literal, $($arg:tt)*) => {
-    $crate::Logger::get_instance()
-      .warn(format!($template, $($arg)*), $namespace);
+    if $crate::Logger::is_enabled($crate::Level::Warn) {
+      $crate::Logger::get_instance()
+        .warn(format!($template, $($arg)*), $namespace);
+    }
   };
 
   ($msg:literal) => {
-    $crate::Logger::get_instance()
-      .warn_from_static($msg, env!("CARGO_PKG_NAME"));
+    if $crate::Logger::is_enabled($crate::Level::Warn) {
+      $crate::Logger::get_instance()
+        .warn_from_static($msg, env!("CARGO_PKG_NAME"));
+    }
   };
 
   ($($fmt:tt)+) => {
-    $crate::Logger::get_instance()
-      .warn(format!($($fmt)+), env!("CARGO_PKG_NAME"));
+    if $crate::Logger::is_enabled($crate::Level::Warn) {
+      $crate::Logger::get_instance()
+        .warn(format!($($fmt)+), env!("CARGO_PKG_NAME"));
+    }
   };
 }
 
@@ -666,43 +806,55 @@ macro_rules! try_warn {
   // ── Named-key arms (before any generic $($fmt:tt)+) ──
 
   (namespace = $namespace:literal, $msg:literal) => {
-    if let Some(instance) = $crate::Logger::try_get_instance() {
-      instance.warn_from_static($msg, $namespace);
+    if $crate::Logger::is_enabled($crate::Level::Warn) {
+      if let Some(instance) = $crate::Logger::try_get_instance() {
+        instance.warn_from_static($msg, $namespace);
+      }
     }
   };
 
   (namespace = $namespace:literal, $($fmt:tt)+) => {
-    if let Some(instance) = $crate::Logger::try_get_instance() {
-      instance.warn(format!($($fmt)+), $namespace);
+    if $crate::Logger::is_enabled($crate::Level::Warn) {
+      if let Some(instance) = $crate::Logger::try_get_instance() {
+        instance.warn(format!($($fmt)+), $namespace);
+      }
     }
   };
 
   (target = $target:literal, namespace = $namespace:literal, $msg:literal) => {
-    if let Some(instance) = $crate::Logger::try_get_instance() {
-      instance.warn_from_static_with_target($msg, $namespace, $target);
+    if $crate::Logger::is_enabled($crate::Level::Warn) {
+      if let Some(instance) = $crate::Logger::try_get_instance() {
+        instance.warn_from_static_with_target($msg, $namespace, $target);
+      }
     }
   };
 
   (target = $target:literal, namespace = $namespace:literal, $($fmt:tt)+) => {
-    if let Some(instance) = $crate::Logger::try_get_instance() {
-      instance.warn_with_target(format!($($fmt)+), $namespace, $target);
+    if $crate::Logger::is_enabled($crate::Level::Warn) {
+      if let Some(instance) = $crate::Logger::try_get_instance() {
+        instance.warn_with_target(format!($($fmt)+), $namespace, $target);
+      }
     }
   };
 
   (target = $target:literal, $msg:literal) => {
-    if let Some(instance) = $crate::Logger::try_get_instance() {
-      instance
-        .warn_from_static_with_target($msg, env!("CARGO_PKG_NAME"), $target);
+    if $crate::Logger::is_enabled($crate::Level::Warn) {
+      if let Some(instance) = $crate::Logger::try_get_instance() {
+        instance
+          .warn_from_static_with_target($msg, env!("CARGO_PKG_NAME"), $target);
+      }
     }
   };
 
   (target = $target:literal, $($fmt:tt)+) => {
-    if let Some(instance) = $crate::Logger::try_get_instance() {
-      instance.warn_with_target(
-        format!($($fmt)+),
-        env!("CARGO_PKG_NAME"),
-        $target,
-      );
+    if $crate::Logger::is_enabled($crate::Level::Warn) {
+      if let Some(instance) = $crate::Logger::try_get_instance() {
+        instance.warn_with_target(
+          format!($($fmt)+),
+          env!("CARGO_PKG_NAME"),
+          $target,
+        );
+      }
     }
   };
 
@@ -712,28 +864,36 @@ macro_rules! try_warn {
   // single-arg catch-all below.
 
   ($namespace:literal, $msg:literal) => {
-    if let Some(instance) = $crate::Logger::try_get_instance() {
-      instance.warn_from_static($msg, $namespace);
+    if $crate::Logger::is_enabled($crate::Level::Warn) {
+      if let Some(instance) = $crate::Logger::try_get_instance() {
+        instance.warn_from_static($msg, $namespace);
+      }
     }
   };
 
   ($namespace:literal, $template:literal, $($arg:tt)*) => {
-    if let Some(instance) = $crate::Logger::try_get_instance() {
-      instance.warn(format!($template, $($arg)*), $namespace);
+    if $crate::Logger::is_enabled($crate::Level::Warn) {
+      if let Some(instance) = $crate::Logger::try_get_instance() {
+        instance.warn(format!($template, $($arg)*), $namespace);
+      }
     }
   };
 
   // ── Default namespace (catch-all, LAST) ──
 
   ($msg:literal) => {
-    if let Some(instance) = $crate::Logger::try_get_instance() {
-      instance.warn_from_static($msg, env!("CARGO_PKG_NAME"));
+    if $crate::Logger::is_enabled($crate::Level::Warn) {
+      if let Some(instance) = $crate::Logger::try_get_instance() {
+        instance.warn_from_static($msg, env!("CARGO_PKG_NAME"));
+      }
     }
   };
 
   ($($fmt:tt)+) => {
-    if let Some(instance) = $crate::Logger::try_get_instance() {
-      instance.warn(format!($($fmt)+), env!("CARGO_PKG_NAME"));
+    if $crate::Logger::is_enabled($crate::Level::Warn) {
+      if let Some(instance) = $crate::Logger::try_get_instance() {
+        instance.warn(format!($($fmt)+), env!("CARGO_PKG_NAME"));
+      }
     }
   };
 }
@@ -768,54 +928,74 @@ macro_rules! try_warn {
 #[macro_export]
 macro_rules! error {
   (namespace = $namespace:literal, $msg:literal) => {
-    $crate::Logger::get_instance().error_from_static($msg, $namespace);
+    if $crate::Logger::is_enabled($crate::Level::Error) {
+      $crate::Logger::get_instance().error_from_static($msg, $namespace);
+    }
   };
 
   (namespace = $namespace:literal, $($fmt:tt)+) => {
-    $crate::Logger::get_instance()
-      .error(format!($($fmt)+), $namespace);
+    if $crate::Logger::is_enabled($crate::Level::Error) {
+      $crate::Logger::get_instance()
+        .error(format!($($fmt)+), $namespace);
+    }
   };
 
   (target = $target:literal, namespace = $namespace:literal, $msg:literal) => {
-    $crate::Logger::get_instance()
-      .error_from_static_with_target($msg, $namespace, $target);
+    if $crate::Logger::is_enabled($crate::Level::Error) {
+      $crate::Logger::get_instance()
+        .error_from_static_with_target($msg, $namespace, $target);
+    }
   };
 
   (target = $target:literal, namespace = $namespace:literal, $($fmt:tt)+) => {
-    $crate::Logger::get_instance()
-      .error_with_target(format!($($fmt)+), $namespace, $target);
+    if $crate::Logger::is_enabled($crate::Level::Error) {
+      $crate::Logger::get_instance()
+        .error_with_target(format!($($fmt)+), $namespace, $target);
+    }
   };
 
   (target = $target:literal, $msg:literal) => {
-    $crate::Logger::get_instance()
-      .error_from_static_with_target($msg, env!("CARGO_PKG_NAME"), $target);
+    if $crate::Logger::is_enabled($crate::Level::Error) {
+      $crate::Logger::get_instance()
+        .error_from_static_with_target($msg, env!("CARGO_PKG_NAME"), $target);
+    }
   };
 
   (target = $target:literal, $($fmt:tt)+) => {
-    $crate::Logger::get_instance().error_with_target(
-      format!($($fmt)+),
-      env!("CARGO_PKG_NAME"),
-      $target,
-    );
+    if $crate::Logger::is_enabled($crate::Level::Error) {
+      $crate::Logger::get_instance().error_with_target(
+        format!($($fmt)+),
+        env!("CARGO_PKG_NAME"),
+        $target,
+      );
+    }
   };
 
   ($namespace:literal, $msg:literal) => {
-    $crate::Logger::get_instance().error_from_static($msg, $namespace);
+    if $crate::Logger::is_enabled($crate::Level::Error) {
+      $crate::Logger::get_instance().error_from_static($msg, $namespace);
+    }
   };
 
   ($namespace:literal, $template:literal, $($arg:tt)*) => {
-    $crate::Logger::get_instance()
-      .error(format!($template, $($arg)*), $namespace);
+    if $crate::Logger::is_enabled($crate::Level::Error) {
+      $crate::Logger::get_instance()
+        .error(format!($template, $($arg)*), $namespace);
+    }
   };
 
   ($msg:literal) => {
-    $crate::Logger::get_instance()
-      .error_from_static($msg, env!("CARGO_PKG_NAME"));
+    if $crate::Logger::is_enabled($crate::Level::Error) {
+      $crate::Logger::get_instance()
+        .error_from_static($msg, env!("CARGO_PKG_NAME"));
+    }
   };
 
   ($($fmt:tt)+) => {
-    $crate::Logger::get_instance()
-      .error(format!($($fmt)+), env!("CARGO_PKG_NAME"));
+    if $crate::Logger::is_enabled($crate::Level::Error) {
+      $crate::Logger::get_instance()
+        .error(format!($($fmt)+), env!("CARGO_PKG_NAME"));
+    }
   };
 }
 
@@ -848,43 +1028,55 @@ macro_rules! try_error {
   // ── Named-key arms (before any generic $($fmt:tt)+) ──
 
   (namespace = $namespace:literal, $msg:literal) => {
-    if let Some(instance) = $crate::Logger::try_get_instance() {
-      instance.error_from_static($msg, $namespace);
+    if $crate::Logger::is_enabled($crate::Level::Error) {
+      if let Some(instance) = $crate::Logger::try_get_instance() {
+        instance.error_from_static($msg, $namespace);
+      }
     }
   };
 
   (namespace = $namespace:literal, $($fmt:tt)+) => {
-    if let Some(instance) = $crate::Logger::try_get_instance() {
-      instance.error(format!($($fmt)+), $namespace);
+    if $crate::Logger::is_enabled($crate::Level::Error) {
+      if let Some(instance) = $crate::Logger::try_get_instance() {
+        instance.error(format!($($fmt)+), $namespace);
+      }
     }
   };
 
   (target = $target:literal, namespace = $namespace:literal, $msg:literal) => {
-    if let Some(instance) = $crate::Logger::try_get_instance() {
-      instance.error_from_static_with_target($msg, $namespace, $target);
+    if $crate::Logger::is_enabled($crate::Level::Error) {
+      if let Some(instance) = $crate::Logger::try_get_instance() {
+        instance.error_from_static_with_target($msg, $namespace, $target);
+      }
     }
   };
 
   (target = $target:literal, namespace = $namespace:literal, $($fmt:tt)+) => {
-    if let Some(instance) = $crate::Logger::try_get_instance() {
-      instance.error_with_target(format!($($fmt)+), $namespace, $target);
+    if $crate::Logger::is_enabled($crate::Level::Error) {
+      if let Some(instance) = $crate::Logger::try_get_instance() {
+        instance.error_with_target(format!($($fmt)+), $namespace, $target);
+      }
     }
   };
 
   (target = $target:literal, $msg:literal) => {
-    if let Some(instance) = $crate::Logger::try_get_instance() {
-      instance
-        .error_from_static_with_target($msg, env!("CARGO_PKG_NAME"), $target);
+    if $crate::Logger::is_enabled($crate::Level::Error) {
+      if let Some(instance) = $crate::Logger::try_get_instance() {
+        instance
+          .error_from_static_with_target($msg, env!("CARGO_PKG_NAME"), $target);
+      }
     }
   };
 
   (target = $target:literal, $($fmt:tt)+) => {
-    if let Some(instance) = $crate::Logger::try_get_instance() {
-      instance.error_with_target(
-        format!($($fmt)+),
-        env!("CARGO_PKG_NAME"),
-        $target,
-      );
+    if $crate::Logger::is_enabled($crate::Level::Error) {
+      if let Some(instance) = $crate::Logger::try_get_instance() {
+        instance.error_with_target(
+          format!($($fmt)+),
+          env!("CARGO_PKG_NAME"),
+          $target,
+        );
+      }
     }
   };
 
@@ -894,28 +1086,36 @@ macro_rules! try_error {
   // single-arg catch-all below.
 
   ($namespace:literal, $msg:literal) => {
-    if let Some(instance) = $crate::Logger::try_get_instance() {
-      instance.error_from_static($msg, $namespace);
+    if $crate::Logger::is_enabled($crate::Level::Error) {
+      if let Some(instance) = $crate::Logger::try_get_instance() {
+        instance.error_from_static($msg, $namespace);
+      }
     }
   };
 
   ($namespace:literal, $template:literal, $($arg:tt)*) => {
-    if let Some(instance) = $crate::Logger::try_get_instance() {
-      instance.error(format!($template, $($arg)*), $namespace);
+    if $crate::Logger::is_enabled($crate::Level::Error) {
+      if let Some(instance) = $crate::Logger::try_get_instance() {
+        instance.error(format!($template, $($arg)*), $namespace);
+      }
     }
   };
 
   // ── Default namespace (catch-all, LAST) ──
 
   ($msg:literal) => {
-    if let Some(instance) = $crate::Logger::try_get_instance() {
-      instance.error_from_static($msg, env!("CARGO_PKG_NAME"));
+    if $crate::Logger::is_enabled($crate::Level::Error) {
+      if let Some(instance) = $crate::Logger::try_get_instance() {
+        instance.error_from_static($msg, env!("CARGO_PKG_NAME"));
+      }
     }
   };
 
   ($($fmt:tt)+) => {
-    if let Some(instance) = $crate::Logger::try_get_instance() {
-      instance.error(format!($($fmt)+), env!("CARGO_PKG_NAME"));
+    if $crate::Logger::is_enabled($crate::Level::Error) {
+      if let Some(instance) = $crate::Logger::try_get_instance() {
+        instance.error(format!($($fmt)+), env!("CARGO_PKG_NAME"));
+      }
     }
   };
 }
@@ -950,54 +1150,74 @@ macro_rules! try_error {
 #[macro_export]
 macro_rules! fatal {
   (namespace = $namespace:literal, $msg:literal) => {
-    $crate::Logger::get_instance().fatal_from_static($msg, $namespace);
+    if $crate::Logger::is_enabled($crate::Level::Fatal) {
+      $crate::Logger::get_instance().fatal_from_static($msg, $namespace);
+    }
   };
 
   (namespace = $namespace:literal, $($fmt:tt)+) => {
-    $crate::Logger::get_instance()
-      .fatal(format!($($fmt)+), $namespace);
+    if $crate::Logger::is_enabled($crate::Level::Fatal) {
+      $crate::Logger::get_instance()
+        .fatal(format!($($fmt)+), $namespace);
+    }
   };
 
   (target = $target:literal, namespace = $namespace:literal, $msg:literal) => {
-    $crate::Logger::get_instance()
-      .fatal_from_static_with_target($msg, $namespace, $target);
+    if $crate::Logger::is_enabled($crate::Level::Fatal) {
+      $crate::Logger::get_instance()
+        .fatal_from_static_with_target($msg, $namespace, $target);
+    }
   };
 
   (target = $target:literal, namespace = $namespace:literal, $($fmt:tt)+) => {
-    $crate::Logger::get_instance()
-      .fatal_with_target(format!($($fmt)+), $namespace, $target);
+    if $crate::Logger::is_enabled($crate::Level::Fatal) {
+      $crate::Logger::get_instance()
+        .fatal_with_target(format!($($fmt)+), $namespace, $target);
+    }
   };
 
   (target = $target:literal, $msg:literal) => {
-    $crate::Logger::get_instance()
-      .fatal_from_static_with_target($msg, env!("CARGO_PKG_NAME"), $target);
+    if $crate::Logger::is_enabled($crate::Level::Fatal) {
+      $crate::Logger::get_instance()
+        .fatal_from_static_with_target($msg, env!("CARGO_PKG_NAME"), $target);
+    }
   };
 
   (target = $target:literal, $($fmt:tt)+) => {
-    $crate::Logger::get_instance().fatal_with_target(
-      format!($($fmt)+),
-      env!("CARGO_PKG_NAME"),
-      $target,
-    );
+    if $crate::Logger::is_enabled($crate::Level::Fatal) {
+      $crate::Logger::get_instance().fatal_with_target(
+        format!($($fmt)+),
+        env!("CARGO_PKG_NAME"),
+        $target,
+      );
+    }
   };
 
   ($namespace:literal, $msg:literal) => {
-    $crate::Logger::get_instance().fatal_from_static($msg, $namespace);
+    if $crate::Logger::is_enabled($crate::Level::Fatal) {
+      $crate::Logger::get_instance().fatal_from_static($msg, $namespace);
+    }
   };
 
   ($namespace:literal, $template:literal, $($arg:tt)*) => {
-    $crate::Logger::get_instance()
-      .fatal(format!($template, $($arg)*), $namespace);
+    if $crate::Logger::is_enabled($crate::Level::Fatal) {
+      $crate::Logger::get_instance()
+        .fatal(format!($template, $($arg)*), $namespace);
+    }
   };
 
   ($msg:literal) => {
-    $crate::Logger::get_instance()
-      .fatal_from_static($msg, env!("CARGO_PKG_NAME"));
+    if $crate::Logger::is_enabled($crate::Level::Fatal) {
+      $crate::Logger::get_instance()
+        .fatal_from_static($msg, env!("CARGO_PKG_NAME"));
+    }
   };
 
   ($($fmt:tt)+) => {
-    $crate::Logger::get_instance()
-      .fatal(format!($($fmt)+), env!("CARGO_PKG_NAME"));
+    if $crate::Logger::is_enabled($crate::Level::Fatal) {
+      $crate::Logger::get_instance()
+        .fatal(format!($($fmt)+), env!("CARGO_PKG_NAME"));
+    }
   };
 }
 
@@ -1030,43 +1250,55 @@ macro_rules! try_fatal {
   // ── Named-key arms (before any generic $($fmt:tt)+) ──
 
   (namespace = $namespace:literal, $msg:literal) => {
-    if let Some(instance) = $crate::Logger::try_get_instance() {
-      instance.fatal_from_static($msg, $namespace);
+    if $crate::Logger::is_enabled($crate::Level::Fatal) {
+      if let Some(instance) = $crate::Logger::try_get_instance() {
+        instance.fatal_from_static($msg, $namespace);
+      }
     }
   };
 
   (namespace = $namespace:literal, $($fmt:tt)+) => {
-    if let Some(instance) = $crate::Logger::try_get_instance() {
-      instance.fatal(format!($($fmt)+), $namespace);
+    if $crate::Logger::is_enabled($crate::Level::Fatal) {
+      if let Some(instance) = $crate::Logger::try_get_instance() {
+        instance.fatal(format!($($fmt)+), $namespace);
+      }
     }
   };
 
   (target = $target:literal, namespace = $namespace:literal, $msg:literal) => {
-    if let Some(instance) = $crate::Logger::try_get_instance() {
-      instance.fatal_from_static_with_target($msg, $namespace, $target);
+    if $crate::Logger::is_enabled($crate::Level::Fatal) {
+      if let Some(instance) = $crate::Logger::try_get_instance() {
+        instance.fatal_from_static_with_target($msg, $namespace, $target);
+      }
     }
   };
 
   (target = $target:literal, namespace = $namespace:literal, $($fmt:tt)+) => {
-    if let Some(instance) = $crate::Logger::try_get_instance() {
-      instance.fatal_with_target(format!($($fmt)+), $namespace, $target);
+    if $crate::Logger::is_enabled($crate::Level::Fatal) {
+      if let Some(instance) = $crate::Logger::try_get_instance() {
+        instance.fatal_with_target(format!($($fmt)+), $namespace, $target);
+      }
     }
   };
 
   (target = $target:literal, $msg:literal) => {
-    if let Some(instance) = $crate::Logger::try_get_instance() {
-      instance
-        .fatal_from_static_with_target($msg, env!("CARGO_PKG_NAME"), $target);
+    if $crate::Logger::is_enabled($crate::Level::Fatal) {
+      if let Some(instance) = $crate::Logger::try_get_instance() {
+        instance
+          .fatal_from_static_with_target($msg, env!("CARGO_PKG_NAME"), $target);
+      }
     }
   };
 
   (target = $target:literal, $($fmt:tt)+) => {
-    if let Some(instance) = $crate::Logger::try_get_instance() {
-      instance.fatal_with_target(
-        format!($($fmt)+),
-        env!("CARGO_PKG_NAME"),
-        $target,
-      );
+    if $crate::Logger::is_enabled($crate::Level::Fatal) {
+      if let Some(instance) = $crate::Logger::try_get_instance() {
+        instance.fatal_with_target(
+          format!($($fmt)+),
+          env!("CARGO_PKG_NAME"),
+          $target,
+        );
+      }
     }
   };
 
@@ -1076,28 +1308,36 @@ macro_rules! try_fatal {
   // single-arg catch-all below.
 
   ($namespace:literal, $msg:literal) => {
-    if let Some(instance) = $crate::Logger::try_get_instance() {
-      instance.fatal_from_static($msg, $namespace);
+    if $crate::Logger::is_enabled($crate::Level::Fatal) {
+      if let Some(instance) = $crate::Logger::try_get_instance() {
+        instance.fatal_from_static($msg, $namespace);
+      }
     }
   };
 
   ($namespace:literal, $template:literal, $($arg:tt)*) => {
-    if let Some(instance) = $crate::Logger::try_get_instance() {
-      instance.fatal(format!($template, $($arg)*), $namespace);
+    if $crate::Logger::is_enabled($crate::Level::Fatal) {
+      if let Some(instance) = $crate::Logger::try_get_instance() {
+        instance.fatal(format!($template, $($arg)*), $namespace);
+      }
     }
   };
 
   // ── Default namespace (catch-all, LAST) ──
 
   ($msg:literal) => {
-    if let Some(instance) = $crate::Logger::try_get_instance() {
-      instance.fatal_from_static($msg, env!("CARGO_PKG_NAME"));
+    if $crate::Logger::is_enabled($crate::Level::Fatal) {
+      if let Some(instance) = $crate::Logger::try_get_instance() {
+        instance.fatal_from_static($msg, env!("CARGO_PKG_NAME"));
+      }
     }
   };
 
   ($($fmt:tt)+) => {
-    if let Some(instance) = $crate::Logger::try_get_instance() {
-      instance.fatal(format!($($fmt)+), env!("CARGO_PKG_NAME"));
+    if $crate::Logger::is_enabled($crate::Level::Fatal) {
+      if let Some(instance) = $crate::Logger::try_get_instance() {
+        instance.fatal(format!($($fmt)+), env!("CARGO_PKG_NAME"));
+      }
     }
   };
 }

@@ -479,6 +479,7 @@ dependencies = [
  "marquage",
  "thiserror",
  "tokio",
+ "tokio-util",
 ]
 
 [[package]]
@@ -1753,6 +1754,8 @@ dependencies = [
  "chrono",
  "crossbeam-channel",
  "marquage",
+ "tokio",
+ "tokio-util",
 ]
 
 [[package]]
