@@ -38,18 +38,26 @@
 //! do more operations. Finally, data is encoded into frame, sended to peer.
 //!
 //! # Shutdown
-//! When a termination signal is received, depot accepts no new data, waiting for remaining tasks
-//! to finish.
+//! When a termination signal is received, depot accepts no new data. Connections with no request
+//! in flight are closed at once, while the in-flight ones are given `server.shutdown_timeout`
+//! (10 seconds by default) to write their response; tasks that are still running when that grace
+//! period elapses are aborted. Signals received while the shutdown is in progress are ignored, so
+//! the grace period is what bounds it — no signal can turn a graceful shutdown into an abrupt one.
+//! Once every connection task has finished, the host flushes the event bus and the logger before
+//! the process exits.
 
 mod builder;
 pub mod config;
+pub mod depot;
 pub mod error;
+mod handle;
 mod provider;
-pub mod server;
+pub mod run;
 mod signal;
 
 pub use builder::Builder;
+pub use depot::Depot;
 pub use error::BuildError;
+pub use handle::*;
 pub use provider::*;
-pub use server::Depot;
 pub use signal::wait_for_termination;

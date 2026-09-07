@@ -106,9 +106,9 @@ impl Format for DefaultFormatter {
   fn format(
     &self, record: &Record, timestamp: &str, out: &mut String,
   ) -> fmt::Result {
-    write!(
+    writeln!(
       out,
-      "[{}][{}][{}] {}\n",
+      "[{}][{}][{}] {}",
       timestamp,
       record.level,
       record.namespace,
@@ -150,9 +150,9 @@ impl Format for PrettyFormatter {
       Level::Error => ("\x1b[31m\x1b[1m", "\x1b[0m"),
       Level::Fatal => ("\x1b[97m\x1b[41m\x1b[1m", "\x1b[0m"),
     };
-    write!(
+    writeln!(
       out,
-      "{} {}{}{} {} {}\n",
+      "{} {}{}{} {} {}",
       timestamp,
       open,
       record.level,
@@ -178,9 +178,9 @@ mod tests {
   fn closure_format_controls_full_line() {
     let format = |record: &Record, _timestamp: &str, out: &mut String| {
       // Full control: payload first, then metadata, then a newline.
-      write!(
+      writeln!(
         out,
-        "{}|{}|{}\n",
+        "{}|{}|{}",
         String::from_utf8_lossy(&record.content),
         record.namespace,
         record.level

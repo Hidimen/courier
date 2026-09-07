@@ -1,13 +1,13 @@
 use std::{
   any::TypeId,
   sync::{
-    Arc, OnceLock,
+    Arc, Mutex, OnceLock,
     atomic::{AtomicUsize, Ordering},
   },
 };
 
 use dashmap::DashMap;
-use tokio::{select, sync::mpsc::Sender};
+use tokio::{select, sync::mpsc::Sender, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
@@ -20,10 +20,16 @@ use crate::{
 static DISPATCHER: OnceLock<Arc<Dispatcher>> = OnceLock::new();
 
 pub struct Dispatcher {
-  sender: Sender<Box<dyn Event>>,
+  /// The send half of the event channel. It is taken by
+  /// [`shutdown`](Self::shutdown), which closes the channel and lets the
+  /// event loop drain the remaining events before exiting.
+  sender: Mutex<Option<Sender<Box<dyn Event>>>>,
   listeners: Arc<DashMap<TypeId, Vec<ListenerWrapper>>>,
   async_listeners: Arc<DashMap<TypeId, Vec<AsyncListenerWrapper>>>,
   cancellation_token: CancellationToken,
+  /// Handle of the event loop task, joined by
+  /// [`shutdown`](Self::shutdown).
+  handle: Mutex<Option<JoinHandle<()>>>,
   next_id: AtomicUsize,
 }
 
@@ -44,7 +50,7 @@ impl Dispatcher {
     let cancellation_token = CancellationToken::new();
     let cancellation_token_cloned = cancellation_token.clone();
 
-    tokio::spawn(async move {
+    let handle = tokio::spawn(async move {
       let listeners = listeners_cloned;
       let async_listeners = async_listeners_cloned;
 
@@ -60,16 +66,12 @@ impl Dispatcher {
             for item in list.iter() {
               let _ = item.execute(msg.as_ref());
             }
-          } else {
-            continue;
           }
 
           if let Some(list) = async_listeners.get(&type_id) {
             for item in list.iter() {
               let _ = item.execute(msg.as_ref()).await;
             }
-          } else {
-            continue;
           }
         } else {
           break;
@@ -78,10 +80,11 @@ impl Dispatcher {
     });
 
     Self {
-      sender,
+      sender: Mutex::new(Some(sender)),
       listeners,
       async_listeners,
       cancellation_token,
+      handle: Mutex::new(Some(handle)),
       next_id: AtomicUsize::new(0),
     }
   }
@@ -190,7 +193,34 @@ impl Dispatcher {
   }
 
   pub fn emit<E: Event>(&self, event: E) {
-    let _ = self.sender.try_send(Box::new(event));
+    if let Ok(sender) = self.sender.lock()
+      && let Some(sender) = sender.as_ref()
+    {
+      let _ = sender.try_send(Box::new(event));
+    }
+  }
+
+  /// Stops the event loop.
+  ///
+  /// Events that are still queued are delivered to their listeners
+  /// before the background task exits, and this only returns once that
+  /// task has finished, so nothing is lost while shutting down. Events
+  /// emitted afterwards are silently dropped.
+  ///
+  /// **Note**: do not call this from inside a listener — it waits for
+  /// the very task that runs the listeners.
+  pub async fn shutdown(&self) {
+    // Dropping the sender closes the channel: the loop delivers the
+    // events that are still queued and then exits on its own.
+    if let Ok(mut sender) = self.sender.lock() {
+      sender.take();
+    }
+
+    let handle = self.handle.lock().ok().and_then(|mut handle| handle.take());
+
+    if let Some(handle) = handle {
+      let _ = handle.await;
+    }
   }
 }
 

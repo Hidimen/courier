@@ -7,7 +7,7 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
-tokio = { workspace = true, features = ["rt-multi-thread", "signal"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "signal", "time"] }
 thiserror.workspace = true
 marquage.workspace = true
 anyhow.workspace = true

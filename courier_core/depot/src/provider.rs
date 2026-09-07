@@ -1,15 +1,6 @@
-use std::sync::Arc;
-
-use event::Dispatcher;
-use logger::{
-  DefaultFormatter, FormatConfig, PrettyFormatter, flows::ConsoleFlow, info,
-};
-use network::transport::{DatagramTransport, StreamTransport, Transport};
+use network::transport::{DatagramTransport, StreamTransport};
 use protocol::{DatagramProtocol, Protocol, StreamProtocol};
 use relay::{Middleware, Pipeline};
-use tokio_util::sync::CancellationToken;
-
-use crate::{Builder, config::Config};
 
 /// The parts a stream (e.g. TCP) builtin module provides.
 ///
@@ -101,53 +92,6 @@ pub trait StreamProvider: Sized {
       Response = <Self::Protocol as Protocol>::Response,
     >,
   >;
-
-  /// Runs the server to completion, using `cancellation_token` to control
-  /// shutdown: when it is cancelled, the server stops accepting new
-  /// connections and the future completes.
-  ///
-  /// **Note**: better not to overwrite this method, unless you exactly know what you are doing.
-  fn serve(
-    self, config: &Config, cancellation_token: Arc<CancellationToken>,
-  ) -> impl std::future::Future<Output = anyhow::Result<()>> + Send
-  where
-    Self: Send,
-  {
-    async move {
-      let transport = Self::Transport::bind(&config.server.address)?;
-      let protocol = self.protocol();
-      let pipeline = self.pipeline();
-      let logger = match config.server.logger.format {
-        FormatConfig::Default => logger::Builder::new()
-          .capacity(config.server.logger.capacity)
-          .format(DefaultFormatter)
-          .add_flow(ConsoleFlow::new(config.server.logger.level))
-          .build()
-          .expect("Unable to create a logger"),
-        FormatConfig::Pretty => logger::Builder::new()
-          .capacity(config.server.logger.capacity)
-          .format(PrettyFormatter)
-          .add_flow(ConsoleFlow::new(config.server.logger.level))
-          .build()
-          .expect("Unable to create a logger"),
-      };
-      let dispatcher = Dispatcher::new(config.server.event.capacity).install();
-
-      logger::info!("Listening on {}", config.server.address);
-
-      let mut depot = Builder::new()
-        .transport(transport)
-        .protocol(protocol)
-        .pipeline(pipeline)
-        .logger(logger)
-        .dispatcher(dispatcher)
-        .cancellation_token(cancellation_token)
-        .build()?;
-
-      depot.run_stream().await;
-      Ok(())
-    }
-  }
 }
 
 /// The parts a datagram (e.g. UDP) builtin module provides.
@@ -239,51 +183,4 @@ pub trait DatagramProvider: Sized {
       Response = <Self::Protocol as Protocol>::Response,
     >,
   >;
-
-  /// Runs the server to completion, using `cancellation_token` to control
-  /// shutdown: when it is cancelled, the server stops accepting new
-  /// connections and the future completes.
-  ///
-  /// **Note**: better not to overwrite this method, unless you exactly know what you are doing.
-  fn serve(
-    self, config: &Config, cancellation_token: Arc<CancellationToken>,
-  ) -> impl std::future::Future<Output = anyhow::Result<()>> + Send
-  where
-    Self: Send,
-  {
-    async move {
-      let transport = Self::Transport::bind(&config.server.address)?;
-      let protocol = self.protocol();
-      let pipeline = self.pipeline();
-      let logger = match config.server.logger.format {
-        FormatConfig::Default => logger::Builder::new()
-          .capacity(config.server.logger.capacity)
-          .format(DefaultFormatter)
-          .add_flow(ConsoleFlow::new(config.server.logger.level))
-          .build()
-          .expect("Unable to create a logger"),
-        FormatConfig::Pretty => logger::Builder::new()
-          .capacity(config.server.logger.capacity)
-          .format(PrettyFormatter)
-          .add_flow(ConsoleFlow::new(config.server.logger.level))
-          .build()
-          .expect("Unable to create a logger"),
-      };
-      let dispatcher = Dispatcher::new(config.server.event.capacity).install();
-
-      info!("Listening on {}", config.server.address);
-
-      let mut depot = Builder::new()
-        .transport(transport)
-        .protocol(protocol)
-        .pipeline(pipeline)
-        .logger(logger)
-        .dispatcher(dispatcher)
-        .cancellation_token(cancellation_token)
-        .build()?;
-
-      depot.run_datagram().await;
-      Ok(())
-    }
-  }
 }
