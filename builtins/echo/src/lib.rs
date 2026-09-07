@@ -18,10 +18,10 @@ pub enum EchoError {
 pub struct EchoProtocol;
 
 /// A request carrying the received bytes as a string.
-pub struct Request(pub String);
+pub struct Request(pub Vec<u8>);
 
 /// A response carrying the request payload back to the peer.
-pub struct Response(pub String);
+pub struct Response(pub Vec<u8>);
 
 impl Protocol for EchoProtocol {
   type Error = EchoError;
@@ -43,9 +43,9 @@ impl StreamProtocol<TcpTransport> for EchoProtocol {
     read_half: &mut <TcpTransport as network::transport::StreamTransport>::ReadHalf,
   ) -> Result<Self::Request, Self::Error> {
     let mut buf = [0u8; 1024];
-    let _ = read_half.read(&mut buf).await?;
+    let count = read_half.read(&mut buf).await?;
 
-    Ok(Request(String::from_utf8_lossy(&buf).to_string()))
+    Ok(Request(buf[..count].to_vec()))
   }
 
   async fn encode(

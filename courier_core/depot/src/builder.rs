@@ -4,7 +4,6 @@ use event::Dispatcher;
 use logger::Logger;
 use network::transport::Transport;
 use relay::Pipeline;
-use tokio_util::sync::CancellationToken;
 
 use crate::{Depot, error::BuildError};
 
@@ -74,7 +73,6 @@ pub struct Builder<T = (), P = (), M = ()> {
   pipeline: Option<Pipeline<M>>,
   logger: Option<Arc<Logger>>,
   dispatcher: Option<Arc<Dispatcher>>,
-  cancellation_token: Option<Arc<CancellationToken>>,
 }
 
 impl Builder {
@@ -94,7 +92,6 @@ impl Builder {
       pipeline: None,
       logger: None,
       dispatcher: None,
-      cancellation_token: None,
     }
   }
 }
@@ -138,7 +135,6 @@ impl<T: Transport, P, M> Builder<T, P, M> {
       pipeline: self.pipeline,
       logger: self.logger,
       dispatcher: self.dispatcher,
-      cancellation_token: self.cancellation_token,
     }
   }
 }
@@ -170,7 +166,6 @@ impl<T, P, M> Builder<T, P, M> {
       pipeline: self.pipeline,
       logger: self.logger,
       dispatcher: self.dispatcher,
-      cancellation_token: self.cancellation_token,
     }
   }
 
@@ -203,7 +198,6 @@ impl<T, P, M> Builder<T, P, M> {
       pipeline: Some(pipeline),
       logger: self.logger,
       dispatcher: self.dispatcher,
-      cancellation_token: self.cancellation_token,
     }
   }
 
@@ -247,29 +241,6 @@ impl<T, P, M> Builder<T, P, M> {
   /// ```
   pub fn dispatcher(mut self, dispatcher: Arc<Dispatcher>) -> Self {
     self.dispatcher = Some(dispatcher);
-    self
-  }
-
-  /// Sets the [`CancellationToken`] that controls the [`Depot`] shutdown.
-  ///
-  /// When the token is cancelled, the server stops accepting new
-  /// connections and waits for the remaining tasks to finish. If not set,
-  /// the [`Depot`] creates its own token.
-  ///
-  /// # Examples
-  ///
-  /// ```
-  /// # use std::sync::Arc;
-  /// # use tokio_util::sync::CancellationToken;
-  /// use depot::Builder;
-  ///
-  /// let builder = Builder::new()
-  ///     .cancellation_token(Arc::new(CancellationToken::new()));
-  /// ```
-  pub fn cancellation_token(
-    mut self, cancellation_token: Arc<CancellationToken>,
-  ) -> Self {
-    self.cancellation_token = Some(cancellation_token);
     self
   }
 
@@ -337,9 +308,6 @@ impl<T, P, M> Builder<T, P, M> {
       self.pipeline.ok_or(BuildError::MissingPipeline)?,
       self.logger.ok_or(BuildError::MissingLogger)?,
       self.dispatcher.ok_or(BuildError::MissingDispatcher)?,
-      self
-        .cancellation_token
-        .unwrap_or_else(|| Arc::new(CancellationToken::new())),
     ))
   }
 }

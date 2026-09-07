@@ -182,20 +182,19 @@ impl ToTokens for RegistryInput {
         let provider = module.provider()?;
         let name = module.name.to_string();
         let path = provider.path;
-        let trait_use = match provider.kind {
-          ProviderKind::Stream => quote!(
-            use depot::StreamProvider as _;
-          ),
-          ProviderKind::Datagram => quote!(
-            use depot::DatagramProvider as _;
-          ),
+        let run_kind = match provider.kind {
+          ProviderKind::Stream => quote! {
+            depot::run::run_stream(config, provider).await
+          },
+          ProviderKind::Datagram => quote! {
+            depot::run::run_datagram(config, provider).await
+          },
         };
 
         Some(quote! {
           #name => {
-            #trait_use
             let provider = #path::default();
-            provider.serve(config, cancellation_token).await
+            #run_kind
           }
         })
       })
@@ -237,13 +236,12 @@ impl ToTokens for RegistryInput {
     tokens.extend(quote! {
       #[doc(hidden)]
       pub async fn run_instance(
-        bootloader: &str,
+        provider: &str,
         config: &depot::config::Config,
-        cancellation_token: std::sync::Arc<tokio_util::sync::CancellationToken>,
-      ) -> anyhow::Result<()> {
-        match bootloader {
+      ) -> anyhow::Result<(depot::ShutdownHandle, depot::RunningHandle)> {
+        match provider {
           #(#run_arms,)*
-          other => anyhow::bail!("No builtin module named `{other}` is registered"),
+          other => anyhow::bail!("No provider named `{other}` is registered"),
         }
       }
 

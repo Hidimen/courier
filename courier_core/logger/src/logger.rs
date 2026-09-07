@@ -35,10 +35,17 @@ static LOGGER: OnceLock<Arc<Logger>> = OnceLock::new();
 ///
 /// # Lifecycle
 ///
-/// The logger thread runs until the `Logger` is dropped, at which point the
-/// internal sender is dropped, the worker drains every queued record,
-/// flushes all flows, exits, and is joined — so `drop` returning guarantees
-/// all previously sent records reached their sinks.
+/// The logger thread runs until the `Logger` is dropped or
+/// [`shutdown`](Self::shutdown) is called, at which point the internal
+/// sender is dropped, the worker drains every queued record, flushes all
+/// flows, exits, and is joined — so `drop` (or `shutdown`) returning
+/// guarantees all previously sent records reached their sinks.
+///
+/// A `Logger` installed as the global singleton is never dropped, because
+/// the singleton keeps an `Arc` alive for the whole process. Such a logger
+/// must therefore be closed explicitly with
+/// [`shutdown`](Self::shutdown) — otherwise the queued records and the
+/// final flush are lost when the process exits.
 ///
 /// # Global singleton
 ///
@@ -64,7 +71,10 @@ static LOGGER: OnceLock<Arc<Logger>> = OnceLock::new();
 #[derive(Debug)]
 pub struct Logger {
   handle: Mutex<Option<JoinHandle<()>>>,
-  sender: Option<Sender<Record>>,
+  /// The send half of the record channel. It is taken by
+  /// [`shutdown`](Self::shutdown), which closes the channel and lets the
+  /// worker drain the remaining records before exiting.
+  sender: Mutex<Option<Sender<Record>>>,
   min_level: Level,
 }
 
@@ -143,7 +153,11 @@ impl Logger {
       })
       .expect("Unable to spawn a logger thread");
 
-    Self { handle: Mutex::new(Some(handle)), sender: Some(sender), min_level }
+    Self {
+      handle: Mutex::new(Some(handle)),
+      sender: Mutex::new(Some(sender)),
+      min_level,
+    }
   }
 
   /// Installs this logger as the global singleton.
@@ -231,8 +245,47 @@ impl Logger {
     if record.level < self.min_level {
       return;
     }
-    if let Some(sender) = &self.sender {
+    if let Ok(sender) = self.sender.lock()
+      && let Some(sender) = sender.as_ref()
+    {
       let _ = sender.try_send(record);
+    }
+  }
+
+  /// Shuts the logger down.
+  ///
+  /// No record is accepted afterwards: the ones still queued are
+  /// written, every flow is flushed and the worker thread is joined, so
+  /// this returns only once every previously sent record has reached its
+  /// sink. Calling it more than once is safe, and `drop` calls it too.
+  ///
+  /// # Examples
+  ///
+  /// ```rust
+  /// use logger::{Builder, Level, Logger};
+  ///
+  /// let logger = Builder::new()
+  ///     .capacity(128)
+  ///     .add_flow(logger::flows::ConsoleFlow::new(Level::Info))
+  ///     .build_local()
+  ///     .unwrap();
+  ///
+  /// logger.info("Hello!".into(), "my_app");
+  /// logger.shutdown();
+  /// ```
+  pub fn shutdown(&self) {
+    // Dropping the sender disconnects the channel: the worker drains
+    // every queued record, flushes all flows and exits. Joining
+    // afterwards makes this fully synchronous — when it returns every
+    // record has reached its sinks and the thread is gone.
+    if let Ok(mut sender) = self.sender.lock() {
+      sender.take();
+    }
+
+    if let Ok(mut handle) = self.handle.lock()
+      && let Some(handle) = handle.take()
+    {
+      let _ = handle.join();
     }
   }
 
@@ -431,14 +484,7 @@ impl Logger {
 
 impl Drop for Logger {
   fn drop(&mut self) {
-    // Drop the sender first: the channel disconnects, the worker drains
-    // every queued record, flushes all flows and exits. Joining afterwards
-    // makes `drop` fully synchronous — when it returns every record has
-    // reached its sinks and the thread is gone.
-    self.sender.take();
-    if let Some(handle) = self.handle.get_mut().unwrap().take() {
-      let _ = handle.join();
-    }
+    self.shutdown();
   }
 }
 

@@ -1,18 +1,21 @@
-use std::sync::Arc;
+use std::sync::{
+  Arc,
+  atomic::{AtomicUsize, Ordering},
+};
 
 use event::Dispatcher;
-use logger::{Logger, error};
+use logger::{Logger, error, info};
 use network::{
   KeepAlive,
-  stream::{SplitStream, WriteHalf, check_state},
+  stream::{SplitStream, StreamState, WriteHalf, check_state},
   transport::{DatagramTransport, StreamTransport},
 };
 use protocol::{DatagramProtocol, StreamProtocol};
 use relay::Middleware;
 use relay::Pipeline;
-use tokio_util::sync::CancellationToken;
+use tokio::sync::Notify;
 
-use crate::error::DepotError;
+use crate::{ShutdownHandle, error::DepotError};
 
 /// A server instance that pairs a [`Transport`](network::transport::Transport), a [`Protocol`](protocol::Protocol), a
 /// [`Pipeline`] and an [`Dispatcher`].
@@ -34,7 +37,7 @@ pub struct Depot<T, P, M> {
   pipeline: Arc<Pipeline<M>>,
   logger: Arc<Logger>,
   dispatcher: Arc<Dispatcher>,
-  cancellation_token: Arc<CancellationToken>,
+  shutdown_handle: ShutdownHandle,
 }
 
 impl<T, P, M> Depot<T, P, M> {
@@ -43,7 +46,7 @@ impl<T, P, M> Depot<T, P, M> {
   /// shutdown.
   pub fn new(
     transport: T, protocol: P, pipeline: Pipeline<M>, logger: Arc<Logger>,
-    dispatcher: Arc<Dispatcher>, cancellation_token: Arc<CancellationToken>,
+    dispatcher: Arc<Dispatcher>,
   ) -> Self {
     Self {
       transport,
@@ -51,7 +54,7 @@ impl<T, P, M> Depot<T, P, M> {
       pipeline: Arc::new(pipeline),
       logger,
       dispatcher,
-      cancellation_token,
+      shutdown_handle: ShutdownHandle::new(),
     }
   }
 
@@ -75,14 +78,8 @@ impl<T, P, M> Depot<T, P, M> {
     self.dispatcher.clone()
   }
 
-  /// Returns a cancellation token.
-  pub fn cancellation_token(&self) -> CancellationToken {
-    self.cancellation_token.child_token()
-  }
-
-  /// Stop the instance.
-  pub fn stop(&self) {
-    self.cancellation_token.cancel();
+  pub(crate) fn shutdown_handle(&self) -> ShutdownHandle {
+    self.shutdown_handle.clone()
   }
 }
 
@@ -113,12 +110,14 @@ where
   /// - [`KeepAlive::Pending`] — treated as [`KeepAlive::Keep`]; the
   ///   protocol hasn't decided yet.
   pub async fn run_stream(&mut self) {
-    let cancellation_token = self.cancellation_token.child_token();
+    let connection_count = Arc::new(AtomicUsize::new(0));
+    let shutdown = self.shutdown_handle.child();
+    let notify = Arc::new(Notify::new());
 
     loop {
       let accept_result = tokio::select! {
         result = self.transport.accept() => result,
-        _ = cancellation_token.cancelled() => break
+        _ = shutdown.wait() => break
       };
 
       let (mut read, mut write) = match accept_result {
@@ -131,81 +130,145 @@ where
       let protocol = self.protocol.clone();
       let pipeline = self.pipeline.clone();
 
-      let child_token = cancellation_token.child_token();
+      let child = shutdown.child();
+      let count = connection_count.clone();
+      let notifier = notify.clone();
       tokio::spawn(async move {
         let mut request_count: usize = 0;
         let mut keep_alive = KeepAlive::Pending;
+        let count = count;
+        count.fetch_add(1, Ordering::Relaxed);
 
         loop {
-          tokio::select! {
-            state = check_state(&mut read, &mut write) => state,
-            _ = child_token.cancelled() => break
-          };
+          if child.is_shutdown() {
+            break;
+          }
 
-          // Decode the next request. When the keep-alive directive is
-          // `Timeout`, wrap the decode future so the task does not
-          // wait indefinitely for a new request.
-          let req = match keep_alive {
-            KeepAlive::Timeout(d) => {
-              match tokio::time::timeout(d, protocol.decode(&mut read)).await {
-                Ok(Ok(req)) => req,
-                Ok(Err(e)) => {
-                  error!("An error emitted by protocol decoder: {}", e);
+          let state = check_state(&mut read, &mut write).await;
+
+          match state {
+            StreamState::Open => {
+              let req = match keep_alive {
+                KeepAlive::Timeout(d) => {
+                  match tokio::time::timeout(d, protocol.decode(&mut read))
+                    .await
+                  {
+                    Ok(Ok(req)) => req,
+                    Ok(Err(e)) => {
+                      error!("An error emitted by protocol decoder: {}", e);
+                      break;
+                    },
+                    Err(_elapsed) => break,
+                  }
+                },
+                _ => match protocol.decode(&mut read).await {
+                  Ok(req) => req,
+                  Err(e) => {
+                    error!("An error emitted by protocol decoder: {}", e);
+                    break;
+                  },
+                },
+              };
+
+              request_count += 1;
+
+              let resp = match pipeline.handle(req).await {
+                Ok(resp) => resp,
+                Err(e) => {
+                  error!("An error emitted by middleware handler: {}", e);
                   break;
                 },
-                Err(_elapsed) => break,
+              };
+
+              let (frame, new_keep_alive) = match protocol.encode(resp).await {
+                Ok(result) => result,
+                Err(e) => {
+                  error!("An error emitted by protocol encoder: {}", e);
+                  break;
+                },
+              };
+
+              match write.write_all(frame.as_ref()).await {
+                Ok(_) => {},
+                Err(e) => {
+                  error!("An error occurred when sending data: {}", e);
+                  break;
+                },
+              }
+
+              keep_alive = new_keep_alive;
+
+              match keep_alive {
+                KeepAlive::Close => break,
+                KeepAlive::UpTo(n) if request_count >= n => break,
+                _ => continue,
               }
             },
-            _ => match protocol.decode(&mut read).await {
-              Ok(req) => req,
-              Err(e) => {
-                error!("An error emitted by protocol decoder: {}", e);
-                break;
-              },
-            },
-          };
+            StreamState::PeerClosed => {
+              let req = match keep_alive {
+                KeepAlive::Timeout(d) => {
+                  match tokio::time::timeout(d, protocol.decode(&mut read))
+                    .await
+                  {
+                    Ok(Ok(req)) => req,
+                    Ok(Err(e)) => {
+                      error!("An error emitted by protocol decoder: {}", e);
+                      break;
+                    },
+                    Err(_elapsed) => break,
+                  }
+                },
+                _ => match protocol.decode(&mut read).await {
+                  Ok(req) => req,
+                  Err(e) => {
+                    error!("An error emitted by protocol decoder: {}", e);
+                    break;
+                  },
+                },
+              };
 
-          request_count += 1;
+              let resp = match pipeline.handle(req).await {
+                Ok(resp) => resp,
+                Err(e) => {
+                  error!("An error emitted by middleware handler: {}", e);
+                  break;
+                },
+              };
 
-          // Pass the request through the middleware pipeline.
-          let resp = match pipeline.handle(req).await {
-            Ok(resp) => resp,
-            Err(e) => {
-              error!("An error emitted by middleware handler: {}", e);
+              let (frame, _) = match protocol.encode(resp).await {
+                Ok(result) => result,
+                Err(e) => {
+                  error!("An error emitted by protocol encoder: {}", e);
+                  break;
+                },
+              };
+
+              match write.write_all(frame.as_ref()).await {
+                Ok(_) => {},
+                Err(e) => {
+                  error!("An error occurred when sending data: {}", e);
+                  break;
+                },
+              }
+
               break;
             },
+            _ => break,
           };
+        }
 
-          // Encode the response and obtain the updated keep-alive
-          // directive from the protocol.
-          let (frame, new_keep_alive) = match protocol.encode(resp).await {
-            Ok(result) => result,
-            Err(e) => {
-              error!("An error emitted by protocol encoder: {}", e);
-              break;
-            },
-          };
-
-          match write.write_all(frame.as_ref()).await {
-            Ok(_) => {},
-            Err(e) => {
-              error!("An error occurred when sending data: {}", e);
-              break;
-            },
-          }
-
-          keep_alive = new_keep_alive;
-
-          // Apply the keep-alive directive to decide whether to
-          // continue processing on this connection.
-          match keep_alive {
-            KeepAlive::Close => break,
-            KeepAlive::UpTo(n) if request_count >= n => break,
-            _ => continue,
-          }
+        if count.fetch_sub(1, Ordering::Release) == 1 {
+          notifier.notify_one();
         }
       });
     }
+
+    // Cleanup
+    while connection_count.load(Ordering::Acquire) > 0 {
+      notify.notified().await;
+    }
+
+    info!("Server stopped")
   }
 }
 
@@ -223,12 +286,12 @@ where
   /// decoded context through the middleware chain, encodes the result,
   /// and sends it back to the peer.
   pub async fn run_datagram(&mut self) {
-    let cancellation_token = self.cancellation_token.child_token();
+    let shutdown = self.shutdown_handle.child();
     loop {
       let mut buf = [0u8; 1024];
       let recv_result = tokio::select! {
         result = self.transport.recv_from(&mut buf) => result,
-        _ = cancellation_token.cancelled() => break
+        _ = shutdown.wait() => break
       };
       let (_, peer) = match recv_result {
         Ok(d) => d,
@@ -280,5 +343,7 @@ where
         _ => unreachable!(),
       };
     }
+
+    info!("Server stopped");
   }
 }
