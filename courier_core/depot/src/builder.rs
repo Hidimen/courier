@@ -73,6 +73,7 @@ pub struct Builder<T = (), P = (), M = ()> {
   pipeline: Option<Pipeline<M>>,
   logger: Option<Arc<Logger>>,
   dispatcher: Option<Arc<Dispatcher>>,
+  shutdown_timeout: usize,
 }
 
 impl Builder {
@@ -92,6 +93,7 @@ impl Builder {
       pipeline: None,
       logger: None,
       dispatcher: None,
+      shutdown_timeout: 10000,
     }
   }
 }
@@ -135,6 +137,7 @@ impl<T: Transport, P, M> Builder<T, P, M> {
       pipeline: self.pipeline,
       logger: self.logger,
       dispatcher: self.dispatcher,
+      shutdown_timeout: self.shutdown_timeout,
     }
   }
 }
@@ -166,6 +169,7 @@ impl<T, P, M> Builder<T, P, M> {
       pipeline: self.pipeline,
       logger: self.logger,
       dispatcher: self.dispatcher,
+      shutdown_timeout: self.shutdown_timeout,
     }
   }
 
@@ -198,6 +202,7 @@ impl<T, P, M> Builder<T, P, M> {
       pipeline: Some(pipeline),
       logger: self.logger,
       dispatcher: self.dispatcher,
+      shutdown_timeout: self.shutdown_timeout,
     }
   }
 
@@ -241,6 +246,22 @@ impl<T, P, M> Builder<T, P, M> {
   /// ```
   pub fn dispatcher(mut self, dispatcher: Arc<Dispatcher>) -> Self {
     self.dispatcher = Some(dispatcher);
+    self
+  }
+
+  /// Sets the shutdown timeout for the [`Depot`].
+  ///
+  /// # Examples
+  ///
+  /// ```rust
+  /// use depot::Builder;
+  /// use std::sync::Arc;
+  ///
+  /// let builder = Builder::new()
+  ///     .shutdown_timeout(10000);
+  /// ```
+  pub fn shutdown_timeout(mut self, timeout: usize) -> Self {
+    self.shutdown_timeout = timeout;
     self
   }
 
@@ -308,6 +329,7 @@ impl<T, P, M> Builder<T, P, M> {
       self.pipeline.ok_or(BuildError::MissingPipeline)?,
       self.logger.ok_or(BuildError::MissingLogger)?,
       self.dispatcher.ok_or(BuildError::MissingDispatcher)?,
+      self.shutdown_timeout,
     ))
   }
 }

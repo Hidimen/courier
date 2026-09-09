@@ -4,17 +4,11 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::{CancellationToken, WaitForCancellationFuture};
 
 #[derive(Clone)]
-pub struct ShutdownHandle(CancellationToken);
-
-impl Default for ShutdownHandle {
-  fn default() -> Self {
-    Self::new()
-  }
-}
+pub struct ShutdownHandle(CancellationToken, usize);
 
 impl ShutdownHandle {
-  pub fn new() -> Self {
-    Self(CancellationToken::new())
+  pub fn new(timeout: usize) -> Self {
+    Self(CancellationToken::new(), timeout)
   }
 
   pub fn wait(&self) -> WaitForCancellationFuture<'_> {
@@ -22,7 +16,7 @@ impl ShutdownHandle {
   }
 
   pub fn child(&self) -> Self {
-    Self(self.0.child_token())
+    Self(self.0.child_token(), self.1)
   }
 
   pub fn shutdown(&self) {
@@ -31,6 +25,10 @@ impl ShutdownHandle {
 
   pub fn is_shutdown(&self) -> bool {
     self.0.is_cancelled()
+  }
+
+  pub fn timeout(&self) -> usize {
+    self.1
   }
 }
 

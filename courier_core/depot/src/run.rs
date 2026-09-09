@@ -39,12 +39,13 @@ where
 
   logger::info!("Listening on {}", config.address);
 
-  let mut depot = Builder::new()
+  let depot = Builder::new()
     .transport(transport)
     .protocol(protocol)
     .pipeline(pipeline)
     .logger(logger)
     .dispatcher(dispatcher)
+    .shutdown_timeout(config.shutdown_timeout)
     .build()?;
 
   let shutdown_handle = depot.shutdown_handle();
@@ -85,12 +86,13 @@ where
 
   logger::info!("Listening on {}", config.address);
 
-  let mut depot = Builder::new()
+  let depot = Builder::new()
     .transport(transport)
     .protocol(protocol)
     .pipeline(pipeline)
     .logger(logger)
     .dispatcher(dispatcher)
+    .shutdown_timeout(config.shutdown_timeout)
     .build()?;
 
   let shutdown_handle = depot.shutdown_handle();

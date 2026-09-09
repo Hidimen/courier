@@ -11,7 +11,7 @@ tokio = { workspace = true, features = ["macros"] }
 
 [dependencies]
 crossbeam-channel.workspace = true
-tokio = { workspace = true, features = ["rt", "macros", "sync"] }
+tokio = { workspace = true, features = ["macros", "sync"] }
 tokio-util.workspace = true
 thiserror.workspace = true
 dashmap = "6.2.1"
