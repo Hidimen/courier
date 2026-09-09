@@ -1,6 +1,9 @@
-use std::sync::{
-  Arc,
-  atomic::{AtomicUsize, Ordering},
+use std::{
+  sync::{
+    Arc,
+    atomic::{AtomicUsize, Ordering},
+  },
+  time::Duration,
 };
 
 use event::Dispatcher;
@@ -13,7 +16,7 @@ use network::{
 use protocol::{DatagramProtocol, StreamProtocol};
 use relay::Middleware;
 use relay::Pipeline;
-use tokio::sync::Notify;
+use tokio::{sync::Notify, time::sleep};
 
 use crate::{ShutdownHandle, error::DepotError};
 
@@ -46,7 +49,7 @@ impl<T, P, M> Depot<T, P, M> {
   /// shutdown.
   pub fn new(
     transport: T, protocol: P, pipeline: Pipeline<M>, logger: Arc<Logger>,
-    dispatcher: Arc<Dispatcher>,
+    dispatcher: Arc<Dispatcher>, shutdown_timeout: usize,
   ) -> Self {
     Self {
       transport,
@@ -54,7 +57,7 @@ impl<T, P, M> Depot<T, P, M> {
       pipeline: Arc::new(pipeline),
       logger,
       dispatcher,
-      shutdown_handle: ShutdownHandle::new(),
+      shutdown_handle: ShutdownHandle::new(shutdown_timeout),
     }
   }
 
@@ -109,7 +112,7 @@ where
   ///   connection.
   /// - [`KeepAlive::Pending`] — treated as [`KeepAlive::Keep`]; the
   ///   protocol hasn't decided yet.
-  pub async fn run_stream(&mut self) {
+  pub async fn run_stream(self) {
     let connection_count = Arc::new(AtomicUsize::new(0));
     let shutdown = self.shutdown_handle.child();
     let notify = Arc::new(Notify::new());
@@ -264,11 +267,29 @@ where
     }
 
     // Cleanup
-    while connection_count.load(Ordering::Acquire) > 0 {
-      notify.notified().await;
+    let timeout = self.shutdown_handle.timeout();
+    info!(
+      "Graceful shutdown starting. Forced termination will occur in {} ms",
+      timeout
+    );
+
+    let count_cloned = connection_count.clone();
+    let notify_cloned = notify.clone();
+
+    tokio::spawn(async move {
+      sleep(Duration::from_millis(timeout as u64)).await;
+      count_cloned.store(0, Ordering::Release);
+      notify_cloned.notify_one();
+    });
+
+    if connection_count.load(Ordering::Acquire) > 0 {
+      info!("Waiting for all tasks to complete");
+      while connection_count.load(Ordering::Acquire) > 0 {
+        notify.notified().await;
+      }
     }
 
-    info!("Server stopped")
+    info!("Server stopped");
   }
 }
 
@@ -285,7 +306,7 @@ where
   /// For each received datagram, this decodes the bytes, passes the
   /// decoded context through the middleware chain, encodes the result,
   /// and sends it back to the peer.
-  pub async fn run_datagram(&mut self) {
+  pub async fn run_datagram(self) {
     let shutdown = self.shutdown_handle.child();
     loop {
       let mut buf = [0u8; 1024];
