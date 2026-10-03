@@ -15,4 +15,4 @@ tokio = { workspace = true, features = [
   "macros",
   "time",
 ] }
-bytes = "1.11.1"
+bytes.workspace = true

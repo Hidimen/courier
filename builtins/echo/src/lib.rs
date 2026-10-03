@@ -1,8 +1,10 @@
+use std::sync::Arc;
+
 use depot::{self, StreamProvider};
 use network::{
   Frame, KeepAlive, stream::ReadHalf, transport::tcp::TcpTransport,
 };
-use protocol::{Protocol, StreamProtocol};
+use protocol::{Decoded, Protocol, StreamProtocol};
 use thiserror::Error;
 
 /// Error type for the echo protocol.
@@ -41,11 +43,15 @@ impl StreamProtocol<TcpTransport> for EchoProtocol {
   async fn decode(
     &self,
     read_half: &mut <TcpTransport as network::transport::StreamTransport>::ReadHalf,
-  ) -> Result<Self::Request, Self::Error> {
+  ) -> Result<Decoded<Self::Request>, Self::Error> {
     let mut buf = [0u8; 1024];
     let count = read_half.read(&mut buf).await?;
 
-    Ok(Request(buf[..count].to_vec()))
+    if count > 0 {
+      Ok(Decoded::Open(Request(buf[..count].to_vec())))
+    } else {
+      Ok(Decoded::Closed)
+    }
   }
 
   async fn encode(
@@ -60,15 +66,20 @@ impl StreamProtocol<TcpTransport> for EchoProtocol {
 /// The transport, logger and event bus are created by the framework from
 /// the server [`Config`](depot::config::Config); this type only declares
 /// the transport its protocol runs over and supplies the pipeline.
-#[derive(Default, Clone, Copy)]
-pub struct EchoProvider;
+pub struct EchoProvider {
+  protocol: Arc<EchoProtocol>,
+}
 
 impl StreamProvider for EchoProvider {
   type Transport = TcpTransport;
   type Protocol = EchoProtocol;
 
-  fn protocol(&self) -> Self::Protocol {
-    EchoProtocol
+  fn protocol(&self) -> Arc<Self::Protocol> {
+    self.protocol.clone()
+  }
+
+  fn create() -> Self {
+    Self { protocol: Arc::new(EchoProtocol) }
   }
 
   fn pipeline(

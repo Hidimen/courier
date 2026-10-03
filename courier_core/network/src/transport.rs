@@ -1,15 +1,12 @@
 pub mod tcp;
 pub mod udp;
 
-use std::{
-  io::Result,
-  net::{SocketAddr, ToSocketAddrs},
-};
+use std::{io::Result, net::SocketAddr};
 
-use crate::stream::{ReadHalf, SplitStream, WriteHalf};
+use crate::stream::{ReadHalf, Stream, WriteHalf};
 
 pub trait Transport: Send + Sync + Sized + 'static {
-  fn bind<A: ToSocketAddrs + Send>(addr: A) -> Result<Self>;
+  fn bind(addr: SocketAddr) -> Result<Self>;
 
   fn set_ttl(&self, ttl: u32) -> Result<()>;
 
@@ -21,15 +18,13 @@ pub trait Transport: Send + Sync + Sized + 'static {
 pub trait StreamTransport: Transport {
   type ReadHalf: ReadHalf + 'static;
   type WriteHalf: WriteHalf + 'static;
-  type Stream: SplitStream<ReadHalf = Self::ReadHalf, WriteHalf = Self::WriteHalf>
+  type Stream: Stream<ReadHalf = Self::ReadHalf, WriteHalf = Self::WriteHalf>
     + 'static;
 
   fn accept(&self) -> impl Future<Output = Result<Self::Stream>> + Send;
 }
 
 pub trait DatagramTransport: Transport {
-  fn recv(&self, buf: &mut [u8]) -> impl Future<Output = Result<usize>> + Send;
-
   fn recv_from(
     &self, buf: &mut [u8],
   ) -> impl Future<Output = Result<(usize, SocketAddr)>> + Send;

@@ -1,20 +1,20 @@
 use std::{
   io::Result,
-  net::{SocketAddr, TcpListener, ToSocketAddrs},
+  net::{SocketAddr, TcpListener},
   task::{Context, Poll},
 };
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt, ReadBuf};
 
 use crate::{
-  stream::{ReadHalf, SplitStream, Stream, WriteHalf},
+  stream::{ReadHalf, Stream, WriteHalf},
   transport::{StreamTransport, Transport},
 };
 
 pub struct TcpTransport(tokio::net::TcpListener);
 
 impl Transport for TcpTransport {
-  fn bind<A: ToSocketAddrs + Send>(addr: A) -> Result<Self> {
+  fn bind(addr: SocketAddr) -> Result<Self> {
     /*
       To avoid Tokio panic, set_nonblocking is necessary.
     */
@@ -58,6 +58,9 @@ impl TcpStream {
 }
 
 impl Stream for TcpStream {
+  type ReadHalf = TcpReadHalf;
+  type WriteHalf = TcpWriteHalf;
+
   async fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
     self.0.read(buf).await
   }
@@ -72,12 +75,6 @@ impl Stream for TcpStream {
 
   async fn peek(&mut self, buf: &mut [u8]) -> Result<usize> {
     self.0.peek(buf).await
-  }
-
-  async fn ready(
-    &self, interest: tokio::io::Interest,
-  ) -> Result<tokio::io::Ready> {
-    self.0.ready(interest).await
   }
 
   fn try_read(&self, buf: &mut [u8]) -> Result<usize> {
@@ -95,15 +92,9 @@ impl Stream for TcpStream {
   fn local_addr(&self) -> Result<SocketAddr> {
     self.0.local_addr()
   }
-}
-
-impl SplitStream for TcpStream {
-  type ReadHalf = TcpReadHalf;
-  type WriteHalf = TcpWriteHalf;
 
   fn split(self) -> (Self::ReadHalf, Self::WriteHalf) {
     let (read, write) = self.0.into_split();
-
     (TcpReadHalf(read), TcpWriteHalf(write))
   }
 }
@@ -130,12 +121,6 @@ impl ReadHalf for TcpReadHalf {
     self.0.local_addr()
   }
 
-  async fn ready(
-    &self, interest: tokio::io::Interest,
-  ) -> Result<tokio::io::Ready> {
-    self.0.ready(interest).await
-  }
-
   fn try_read(&self, buf: &mut [u8]) -> Result<usize> {
     self.0.try_read(buf)
   }
@@ -154,12 +139,6 @@ impl WriteHalf for TcpWriteHalf {
 
   fn peer_addr(&self) -> Result<SocketAddr> {
     self.0.peer_addr()
-  }
-
-  async fn ready(
-    &self, interest: tokio::io::Interest,
-  ) -> Result<tokio::io::Ready> {
-    self.0.ready(interest).await
   }
 
   fn try_write(&self, buf: &[u8]) -> Result<usize> {

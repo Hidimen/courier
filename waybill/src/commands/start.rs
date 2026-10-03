@@ -5,7 +5,7 @@ use chrono::Local;
 use clap::{Args, ValueEnum};
 use courier::depot::config::Config;
 use event::events::ServerStop;
-use logger::Level;
+use logger::{DefaultFormatter, Level, PrettyFormatter, flows::ConsoleFlow};
 
 /// Arguments for the `start` subcommand.
 #[derive(Args)]
@@ -14,7 +14,8 @@ pub struct StartArgs {
   #[arg(long, short)]
   config_file: Option<PathBuf>,
   /// Name of the provider to use.
-  /// Overrides the `server.provider` value in the config file.
+  /// Overrides the `provider` value in the config file and is the default
+  /// for every pod that does not name its own.
   #[arg(long, short)]
   provider: Option<String>,
   /// Lowest level of logger.
@@ -65,11 +66,6 @@ pub fn handle(args: StartArgs) -> anyhow::Result<()> {
     None => Config::default(),
   };
 
-  let provider = args.provider.or_else(|| config.provider.clone()).context(
-    "No provider has been specified: pass `--provider` or set \
-       `provider` in the config file",
-  )?;
-
   if let Some(log_level) = args.log_level {
     config.logger.level = log_level.into();
   }
@@ -78,30 +74,57 @@ pub fn handle(args: StartArgs) -> anyhow::Result<()> {
     config.shutdown_timeout = shutdown_timeout;
   }
 
-  run(provider, config)
+  // `--provider` overrides the config file's top-level `provider`, and the
+  // resulting value is the fallback for every pod that names none of its
+  // own. A provider is not needed to run the instance itself — the pods
+  // resolve theirs — so it is only required for pods that would end up
+  // without one.
+  let provider = args.provider.or_else(|| config.provider.clone());
+  for pod in &mut config.pods {
+    if pod.provider.is_none() {
+      pod.provider = provider.clone();
+    }
+  }
+
+  if let Some(pod) = config.pods.iter().find(|pod| pod.provider.is_none()) {
+    anyhow::bail!(
+      "No provider has been specified for the listener `{}`: pass \
+       `--provider`, set `provider` in the pod, or set the top-level \
+       `provider` in the config file",
+      pod.name.as_deref().unwrap_or("Unnamed")
+    );
+  }
+
+  run(config)
 }
 
-/// Runs the server until the depot's [`ShutdownHandle`] fires.
+/// Runs the server until the depot's root
+/// [`ShutdownHandle`](courier::depot::ShutdownHandle) is cancelled.
 ///
-/// `run_instance` returns the [`ShutdownHandle`] that the [`Depot`] built
-/// for itself; this function is the only owner of that handle and drives
-/// the graceful shutdown by calling `shutdown_handle.shutdown()`. When
-/// `signals` is `true`, an OS termination signal (`Ctrl+C` / `SIGTERM`)
-/// also triggers it. It is disabled in service mode, where shutdown is
-/// driven by the Service Control Manager instead.
+/// The global singletons come first: the logger is built from
+/// `config.logger` and the event bus from `config.event`, because the pods
+/// log through the plain logging macros and announce their shutdown
+/// through the bus, so both must exist before the first pod is spawned.
+/// `builtin::run` then turns every configured listener into a pod, and
+/// [`Depot::start`](courier::depot::Depot::start) waits for the root token
+/// before joining them all, so the instance is drained before the
+/// singletons are flushed below.
+///
+/// When `signals` is `true`, an OS termination signal (`Ctrl+C` /
+/// `SIGTERM`) cancels the root token. It is disabled in service mode,
+/// where shutdown is driven by the Service Control Manager instead.
 ///
 /// Once the shutdown has started every further signal is ignored: keeping
 /// the handlers installed swallows them, so they can neither interrupt
 /// the drain nor kill the process through their default behaviour. The
-/// only thing that bounds the shutdown is `server.shutdown_timeout`,
-/// after which the remaining tasks are aborted.
+/// only thing that bounds the shutdown is `shutdown_timeout`, after which
+/// the remaining tasks are aborted.
 ///
 /// Before returning, the event bus and the logger are flushed — both are
 /// global singletons that are never dropped, so without this the events
-/// and the log records emitted while shutting down would be lost.
-fn run_blocking(
-  provider: &str, config: &Config, signals: bool,
-) -> anyhow::Result<()> {
+/// and the log records emitted while shutting down would be lost. They
+/// are flushed on every path, including a startup that failed.
+fn run_blocking(config: &Config, signals: bool) -> anyhow::Result<()> {
   let runtime = tokio::runtime::Builder::new_multi_thread()
     .enable_all()
     .name("courier:runtime")
@@ -110,50 +133,7 @@ fn run_blocking(
     .context("Unable to build Tokio runtime")?;
 
   runtime.block_on(async {
-    // `run_instance` is the owner of the `ShutdownHandle` the depot built
-    // for itself: every shutdown path below drives the graceful drain by
-    // calling `shutdown_handle.shutdown()` on this very handle.
-    let (shutdown_handle, running_handle) =
-      builtin::run_instance(provider, config).await?;
-
-    // On Windows the Service Control Manager may send `Stop` before the
-    // depot has finished starting. The control handler records that intent
-    // in `SERVICE_STOPPING` and reads the handle published here, so act on
-    // it as soon as the handle exists.
-    #[cfg(windows)]
-    {
-      let _ = windows::SERVICE_SHUTDOWN.set(shutdown_handle.clone());
-      if windows::SERVICE_STOPPING.load(std::sync::atomic::Ordering::SeqCst) {
-        shutdown_handle.shutdown();
-      }
-    }
-
-    if signals {
-      let shutdown = shutdown_handle.clone();
-      tokio::spawn(async move {
-        courier::depot::wait_for_termination().await;
-        if let Some(bus) = event::Dispatcher::try_get_instance() {
-          bus.emit(ServerStop {
-            time: {
-              let now = Local::now();
-              now.timestamp_millis()
-            },
-          });
-        }
-        shutdown.shutdown();
-
-        // The shutdown is underway: consume every subsequent signal
-        // without acting on it, so it neither interrupts the drain nor
-        // reaches the default OS handler.
-        loop {
-          courier::depot::wait_for_termination().await;
-        }
-      });
-    }
-
-    // Wait for the depot task to finish draining in-flight work before
-    // tearing down the global singletons.
-    let _ = running_handle.0.await;
+    let result = run_instance(config, signals).await;
 
     // The event bus comes first: its listeners may still log, and those
     // records are only written once the logger is flushed below.
@@ -164,18 +144,108 @@ fn run_blocking(
       logger.shutdown();
     }
 
-    Ok(())
+    result
   })
 }
 
+/// Builds the instance described by `config` and drives it until every pod
+/// has drained.
+async fn run_instance(config: &Config, signals: bool) -> anyhow::Result<()> {
+  // Both singletons are installed before the first pod is spawned: the
+  // pods log through the plain logging macros and emit through the bus.
+  install_logger(&config.logger)?;
+  event::Dispatcher::new(config.event.capacity).install();
+
+  // `builtin::run` resolves the provider of every pod, binds its listener
+  // and spawns its task; a listener that cannot be bound fails the whole
+  // startup, which the caller reports by exiting.
+  let depot = builtin::run(config).await?;
+
+  // The depot's root token: cancelling it stops every pod at once, which
+  // is exactly what every shutdown path below does.
+  let shutdown_handle = depot.shutdown_handle();
+
+  for pod in &config.pods {
+    for addr in &pod.listen {
+      logger::info!("Listening on {}", addr);
+    }
+  }
+
+  // On Windows the Service Control Manager may send `Stop` before the
+  // depot has finished starting. The control handler records that intent
+  // in `SERVICE_STOPPING` and reads the handle published here, so act on
+  // it as soon as the handle exists.
+  #[cfg(windows)]
+  {
+    let _ = windows::SERVICE_SHUTDOWN.set(shutdown_handle.clone());
+    if windows::SERVICE_STOPPING.load(std::sync::atomic::Ordering::SeqCst) {
+      shutdown_handle.shutdown();
+    }
+  }
+
+  if signals {
+    let shutdown = shutdown_handle.clone();
+    tokio::spawn(async move {
+      courier::depot::wait_for_termination().await;
+      if let Some(bus) = event::Dispatcher::try_get_instance() {
+        bus.emit(ServerStop {
+          time: {
+            let now = Local::now();
+            now.timestamp_millis()
+          },
+        });
+      }
+      shutdown.shutdown();
+
+      // The shutdown is underway: consume every subsequent signal
+      // without acting on it, so it neither interrupts the drain nor
+      // reaches the default OS handler.
+      loop {
+        courier::depot::wait_for_termination().await;
+      }
+    });
+  }
+
+  // Wait for the root token and join every pod, so that nothing is still
+  // serving once the caller flushes the global singletons.
+  depot.start().await;
+
+  Ok(())
+}
+
+/// Builds the process logger from `config` and installs it as the global
+/// singleton the logging macros use.
+fn install_logger(config: &logger::Config) -> anyhow::Result<()> {
+  // The formatter is a type parameter of the builder, so the two
+  // alternatives are two instantiations of the same chain.
+  match config.format {
+    logger::FormatConfig::Default => install_with(config, DefaultFormatter),
+    logger::FormatConfig::Pretty => install_with(config, PrettyFormatter),
+  }
+}
+
+/// Installs the global logger, rendering every record with `formatter`.
+fn install_with<F: logger::Format>(
+  config: &logger::Config, formatter: F,
+) -> anyhow::Result<()> {
+  logger::Builder::new()
+    .capacity(config.capacity)
+    .format(formatter)
+    .add_flow(ConsoleFlow::new(config.level))
+    .build()
+    .map_err(|error| anyhow::anyhow!("Unable to create a logger: {error}"))?;
+
+  Ok(())
+}
+
 #[cfg(not(windows))]
-fn run(provider: String, config: Config) -> anyhow::Result<()> {
-  run_blocking(&provider, &config, true)
+fn run(config: Config) -> anyhow::Result<()> {
+  run_blocking(&config, true)
 }
 
 #[cfg(windows)]
-fn run(provider: String, config: Config) -> anyhow::Result<()> {
-  windows::run(provider, config)
+fn run(config: Config) -> anyhow::Result<()> {
+  windows::run(config)
 }
 
 #[cfg(windows)]
@@ -207,17 +277,16 @@ mod windows {
   };
 
   /// State the service main needs. The service entry point is a plain `fn`,
-  /// so it cannot capture locals: stash the values here before dispatching
-  /// and read them back inside the service main.
+  /// so it cannot capture locals: stash the value here before dispatching
+  /// and read it back inside the service main.
   struct ServiceContext {
-    provider: String,
     config: Config,
   }
 
   static SERVICE_CONTEXT: OnceLock<ServiceContext> = OnceLock::new();
   /// The depot's `ShutdownHandle`, published by `run_blocking` once the
   /// depot has been built. The control handler reads it back to drive the
-  /// graceful shutdown, since the handle only exists after `run_instance`.
+  /// graceful shutdown, since the handle only exists after `builtin::run`.
   pub(crate) static SERVICE_SHUTDOWN: OnceLock<ShutdownHandle> =
     OnceLock::new();
   /// Handle used to report the service status from the control handler,
@@ -309,7 +378,7 @@ mod windows {
 
     status_handle.set_service_status(running_status.clone())?;
 
-    let result = run_blocking(&context.provider, &context.config, false);
+    let result = run_blocking(&context.config, false);
 
     // Tell the Service Control Manager the service stopped, reporting a
     // non-zero exit code when the run failed.
@@ -331,8 +400,8 @@ mod windows {
 
   /// Runs on Windows: dispatches as a service when launched by the SCM,
   /// otherwise falls back to a foreground run.
-  pub fn run(provider: String, config: Config) -> anyhow::Result<()> {
-    let _ = SERVICE_CONTEXT.set(ServiceContext { provider, config });
+  pub fn run(config: Config) -> anyhow::Result<()> {
+    let _ = SERVICE_CONTEXT.set(ServiceContext { config });
 
     match service_dispatcher::start("courier", ffi_service_main) {
       Ok(()) => Ok(()),
@@ -342,7 +411,7 @@ mod windows {
       {
         let context =
           SERVICE_CONTEXT.get().context("service context is not set")?;
-        run_blocking(&context.provider, &context.config, true)
+        run_blocking(&context.config, true)
       },
       Err(error) => Err(error.into()),
     }
