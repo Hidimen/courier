@@ -12,13 +12,15 @@ thiserror.workspace = true
 marquage.workspace = true
 anyhow.workspace = true
 num_cpus = "1.17.0"
+bytes.workspace = true
+tokio-util.workspace = true
 
 network = { path = "../network" }
 relay = { path = "../relay" }
 protocol = { path = "../protocol" }
 logger = { path = "../logger" }
 event = { path = "../event" }
-tokio-util.workspace = true
+sync = { path = "../sync" }
 
 [dev-dependencies]
 tokio-test = "0.4.5"

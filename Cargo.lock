@@ -402,6 +402,7 @@ name = "depot"
 version = "0.1.0-alpha.1"
 dependencies = [
  "anyhow",
+ "bytes",
  "event",
  "logger",
  "marquage",
@@ -409,6 +410,7 @@ dependencies = [
  "num_cpus",
  "protocol",
  "relay",
+ "sync",
  "thiserror",
  "tokio",
  "tokio-test",
@@ -1762,7 +1764,7 @@ dependencies = [
 [[package]]
 name = "marquage"
 version = "0.1.0"
-source = "git+https://github.com/Hidimen/marquage.git?branch=feat%2F1.0.0#7375604b2cc1683a38c3a526d1ca195eb0bdc940"
+source = "git+https://github.com/Hidimen/marquage.git#e9412031d2f100fdfdd0b9e382dd03f0f9e29299"
 dependencies = [
  "indexmap",
  "marquage_derive",
@@ -1772,7 +1774,7 @@ dependencies = [
 [[package]]
 name = "marquage_derive"
 version = "0.1.0"
-source = "git+https://github.com/Hidimen/marquage.git?branch=feat%2F1.0.0#7375604b2cc1683a38c3a526d1ca195eb0bdc940"
+source = "git+https://github.com/Hidimen/marquage.git#e9412031d2f100fdfdd0b9e382dd03f0f9e29299"
 dependencies = [
  "convert_case",
  "proc-macro2",
@@ -1783,7 +1785,7 @@ dependencies = [
 [[package]]
 name = "marquage_lib"
 version = "0.0.1"
-source = "git+https://github.com/Hidimen/marquage.git?branch=feat%2F1.0.0#7375604b2cc1683a38c3a526d1ca195eb0bdc940"
+source = "git+https://github.com/Hidimen/marquage.git#e9412031d2f100fdfdd0b9e382dd03f0f9e29299"
 dependencies = [
  "indexmap",
  "marquage_derive",
@@ -2176,6 +2178,13 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
+]
+
+[[package]]
+name = "sync"
+version = "0.1.0-alpha.1"
+dependencies = [
+ "tokio",
 ]
 
 [[package]]

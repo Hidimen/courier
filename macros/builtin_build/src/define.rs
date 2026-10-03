@@ -180,20 +180,22 @@ impl ToTokens for RegistryInput {
       .iter()
       .filter_map(|module| {
         let provider = module.provider()?;
-        let name = module.name.to_string();
+        let name: String = module.name.to_string();
         let path = provider.path;
         let run_kind = match provider.kind {
           ProviderKind::Stream => quote! {
-            depot::run::run_stream(config, provider).await
+            use depot::StreamProvider;
+            depot.spawn_stream(provider, address, shutdown_handle, pod_name.clone())?
           },
           ProviderKind::Datagram => quote! {
-            depot::run::run_datagram(config, provider).await
+            use depot::DatagramProvider;
+            depot.spawn_datagram(provider, address, shutdown_handle, pod_name.clone())?
           },
         };
 
         Some(quote! {
           #name => {
-            let provider = #path::default();
+            let provider = #path::create();
             #run_kind
           }
         })
@@ -235,14 +237,28 @@ impl ToTokens for RegistryInput {
 
     tokens.extend(quote! {
       #[doc(hidden)]
-      pub async fn run_instance(
-        provider: &str,
+      pub async fn run(
         config: &depot::config::Config,
-      ) -> anyhow::Result<(depot::ShutdownHandle, depot::RunningHandle)> {
-        match provider {
-          #(#run_arms,)*
-          other => anyhow::bail!("No provider named `{other}` is registered"),
+      ) -> anyhow::Result<depot::Depot> {
+        let mut depot = depot::Depot::new(config.shutdown_timeout);
+        for pod in &config.pods {
+          let pod_name = pod.name.clone().unwrap_or("Unnamed".to_string());
+          for addr in &pod.listen {
+            let shutdown_handle = depot.child_handle();
+            let address = addr.parse::<std::net::SocketAddr>()?;
+            let provider_name = if let Some(name) = &pod.provider {
+              name
+            }else {
+              anyhow::bail!("No provider specified");
+            };
+            match provider_name.as_str() {
+              #(#run_arms,)*
+              other => anyhow::bail!("No provider named `{other}` is registered"),
+            };
+          }
         }
+
+        Ok(depot)
       }
 
       /// Returns the metadata of every builtin module in `registry.txt`.

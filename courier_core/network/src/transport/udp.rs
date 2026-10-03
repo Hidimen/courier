@@ -1,6 +1,6 @@
 use std::{
   io::Result,
-  net::{SocketAddr, ToSocketAddrs, UdpSocket},
+  net::{SocketAddr, UdpSocket},
 };
 
 use crate::transport::{DatagramTransport, Transport};
@@ -8,7 +8,7 @@ use crate::transport::{DatagramTransport, Transport};
 pub struct UdpTransport(tokio::net::UdpSocket);
 
 impl Transport for UdpTransport {
-  fn bind<A: ToSocketAddrs + Send>(addr: A) -> Result<Self> {
+  fn bind(addr: SocketAddr) -> Result<Self> {
     /*
       To avoid Tokio panic, set_nonblocking is necessary.
     */
@@ -31,10 +31,6 @@ impl Transport for UdpTransport {
 }
 
 impl DatagramTransport for UdpTransport {
-  async fn recv(&self, buf: &mut [u8]) -> Result<usize> {
-    self.0.recv(buf).await
-  }
-
   async fn recv_from(&self, buf: &mut [u8]) -> Result<(usize, SocketAddr)> {
     self.0.recv_from(buf).await
   }

@@ -46,18 +46,15 @@
 //! Once every connection task has finished, the host flushes the event bus and the logger before
 //! the process exits.
 
-mod builder;
 pub mod config;
 pub mod depot;
-pub mod error;
 mod handle;
+mod pod;
 mod provider;
-pub mod run;
 mod signal;
 
-pub use builder::Builder;
 pub use depot::Depot;
-pub use error::BuildError;
 pub use handle::*;
+pub(crate) use pod::Pod;
 pub use provider::*;
 pub use signal::wait_for_termination;

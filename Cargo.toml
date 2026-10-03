@@ -18,9 +18,10 @@ tokio-util = "0.7.19"
 thiserror = "2.0.18"
 crossbeam-channel = "0.5.15"
 anyhow = "1.0.104"
+bytes = "1.11.1"
 chrono = "0.4.45"
 
-marquage = { git = "https://github.com/Hidimen/marquage.git", branch = "feat/1.0.0" }
+marquage = { git = "https://github.com/Hidimen/marquage.git" }
 
 syn = "3.0.3"
 proc-macro2 = "1.0.107"

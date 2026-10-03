@@ -5,6 +5,8 @@ use network::{
   transport::{DatagramTransport, StreamTransport},
 };
 
+use crate::Decoded;
+
 /// A protocol that defines how bytes are converted to and from
 /// application-level requests and responses.
 ///
@@ -29,7 +31,7 @@ pub trait StreamProtocol<T: StreamTransport>: Protocol {
   /// Decodes a request from the stream.
   fn decode(
     &self, read_half: &mut T::ReadHalf,
-  ) -> impl Future<Output = Result<Self::Request, Self::Error>> + Send;
+  ) -> impl Future<Output = Result<Decoded<Self::Request>, Self::Error>> + Send;
 
   /// Encodes a response into a frame and keep-alive directive.
   fn encode(
@@ -42,7 +44,7 @@ pub trait DatagramProtocol<T: DatagramTransport>: Protocol {
   /// Decodes a request from a datagram payload.
   fn decode(
     &self, data: &[u8],
-  ) -> impl Future<Output = Result<Self::Request, Self::Error>> + Send;
+  ) -> impl Future<Output = Result<Decoded<Self::Request>, Self::Error>> + Send;
 
   /// Encodes a response into a frame and keep-alive directive.
   fn encode(

@@ -1,3 +1,5 @@
+mod decode;
 mod protocol;
 
-pub use protocol::{DatagramProtocol, Protocol, StreamProtocol};
+pub use decode::Decoded;
+pub use protocol::*;

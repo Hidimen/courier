@@ -12,4 +12,4 @@ tokio.workspace = true
 tokio-util.workspace = true
 marquage.workspace = true
 chrono.workspace = true
-bytes = "1.11.1"
+bytes.workspace = true
