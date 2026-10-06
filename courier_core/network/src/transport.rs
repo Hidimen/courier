@@ -8,6 +8,9 @@ use crate::stream::{ReadHalf, Stream, WriteHalf};
 pub trait Transport: Send + Sync + Sized + 'static {
   fn bind(addr: SocketAddr) -> Result<Self>;
 
+  #[cfg(not(windows))]
+  fn bind_reuse(addr: SocketAddr) -> Result<Self>;
+
   fn set_ttl(&self, ttl: u32) -> Result<()>;
 
   fn ttl(&self) -> Result<u32>;

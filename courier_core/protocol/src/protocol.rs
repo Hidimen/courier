@@ -1,4 +1,4 @@
-use std::error::Error;
+use std::{error::Error, net::SocketAddr};
 
 use network::{
   Frame, KeepAlive,
@@ -43,8 +43,8 @@ pub trait StreamProtocol<T: StreamTransport>: Protocol {
 pub trait DatagramProtocol<T: DatagramTransport>: Protocol {
   /// Decodes a request from a datagram payload.
   fn decode(
-    &self, data: &[u8],
-  ) -> impl Future<Output = Result<Decoded<Self::Request>, Self::Error>> + Send;
+    &self, data: (Frame, SocketAddr),
+  ) -> impl Future<Output = Result<Self::Request, Self::Error>> + Send;
 
   /// Encodes a response into a frame and keep-alive directive.
   fn encode(

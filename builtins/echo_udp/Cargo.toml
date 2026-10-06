@@ -1,0 +1,24 @@
+[package]
+name = "echo_udp"
+description = "Echo builtins for UDP transport"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[package.metadata.carrier]
+provider = "EchoProvider as datagram"
+
+[lib]
+doc = false
+
+[dependencies]
+thiserror = "2.0.18"
+anyhow = "1.0.104"
+
+depot = { path = "../../courier_core/depot" }
+relay = { path = "../../courier_core/relay" }
+network = { path = "../../courier_core/network" }
+logger = { path = "../../courier_core/logger" }
+protocol = { path = "../../courier_core/protocol" }
+event = { path = "../../courier_core/event" }

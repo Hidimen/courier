@@ -17,6 +17,21 @@ impl Transport for UdpTransport {
     Ok(Self(tokio::net::UdpSocket::from_std(sock)?))
   }
 
+  #[cfg(not(windows))]
+  fn bind_reuse(addr: SocketAddr) -> Result<Self> {
+    use socket2::{Domain, Protocol, Socket, Type};
+
+    let socket =
+      Socket::new(Domain::for_address(addr), Type::DGRAM, Some(Protocol::UDP))?;
+    socket.set_reuse_address(true)?;
+    socket.set_reuse_port(true)?;
+    socket.bind(&addr.into())?;
+
+    let std_socket: std::net::UdpSocket = socket.into();
+
+    Ok(Self(tokio::net::UdpSocket::from_std(std_socket)?))
+  }
+
   fn set_ttl(&self, ttl: u32) -> Result<()> {
     self.0.set_ttl(ttl)
   }

@@ -23,6 +23,27 @@ impl Transport for TcpTransport {
     Ok(Self(tokio::net::TcpListener::from_std(listener)?))
   }
 
+  #[cfg(not(windows))]
+  fn bind_reuse(addr: SocketAddr) -> Result<Self> {
+    use socket2::{Domain, Protocol, Socket, Type};
+
+    let socket = Socket::new(
+      Domain::for_address(addr),
+      Type::STREAM,
+      Some(Protocol::TCP),
+    )?;
+    socket.set_reuse_address(true)?;
+    socket.set_reuse_port(true)?;
+    socket.bind(&addr.into())?;
+    socket.listen(128)?;
+
+    let std_listener: std::net::TcpListener = socket.into();
+
+    std_listener.set_nonblocking(true)?;
+
+    Ok(Self(tokio::net::TcpListener::from_std(std_listener)?))
+  }
+
   fn set_ttl(&self, ttl: u32) -> Result<()> {
     self.0.set_ttl(ttl)
   }
