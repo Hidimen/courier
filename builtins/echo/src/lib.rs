@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use depot::{self, StreamProvider};
 use network::{
   Frame, KeepAlive, stream::ReadHalf, transport::tcp::TcpTransport,
@@ -66,20 +64,18 @@ impl StreamProtocol<TcpTransport> for EchoProtocol {
 /// The transport, logger and event bus are created by the framework from
 /// the server [`Config`](depot::config::Config); this type only declares
 /// the transport its protocol runs over and supplies the pipeline.
-pub struct EchoProvider {
-  protocol: Arc<EchoProtocol>,
-}
+pub struct EchoProvider;
 
 impl StreamProvider for EchoProvider {
   type Transport = TcpTransport;
   type Protocol = EchoProtocol;
 
-  fn protocol(&self) -> Arc<Self::Protocol> {
-    self.protocol.clone()
+  fn protocol(&self) -> Self::Protocol {
+    EchoProtocol
   }
 
   fn create() -> Self {
-    Self { protocol: Arc::new(EchoProtocol) }
+    Self
   }
 
   fn pipeline(

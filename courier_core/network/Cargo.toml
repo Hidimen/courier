@@ -16,3 +16,4 @@ tokio = { workspace = true, features = [
   "time",
 ] }
 bytes.workspace = true
+socket2 = { version = "0.6.5", features = ["all"] }

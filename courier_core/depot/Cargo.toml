@@ -21,6 +21,7 @@ protocol = { path = "../protocol" }
 logger = { path = "../logger" }
 event = { path = "../event" }
 sync = { path = "../sync" }
+tokio-mpmc = "0.2.4"
 
 [dev-dependencies]
 tokio-test = "0.4.5"

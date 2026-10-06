@@ -1,7 +1,5 @@
 #![allow(clippy::type_complexity)]
 
-use std::sync::Arc;
-
 use network::transport::{DatagramTransport, StreamTransport};
 use protocol::{DatagramProtocol, Protocol, StreamProtocol};
 use relay::{Middleware, Pipeline};
@@ -84,7 +82,7 @@ pub trait StreamProvider: Sized {
   fn create() -> Self;
 
   /// Returns the protocol instance.
-  fn protocol(&self) -> Arc<Self::Protocol>;
+  fn protocol(&self) -> Self::Protocol;
 
   /// Returns the configured middleware pipeline.
   ///
@@ -177,7 +175,7 @@ pub trait DatagramProvider: Sized {
   fn create() -> Self;
 
   /// Returns the protocol instance.
-  fn protocol(&self) -> Arc<Self::Protocol>;
+  fn protocol(&self) -> Self::Protocol;
 
   /// Returns the configured middleware pipeline.
   ///
@@ -185,12 +183,10 @@ pub trait DatagramProvider: Sized {
   /// hidden behind `impl Trait`.
   fn pipeline(
     &self,
-  ) -> Arc<
-    Pipeline<
-      impl Middleware<
-        <Self::Protocol as Protocol>::Request,
-        Response = <Self::Protocol as Protocol>::Response,
-      >,
+  ) -> Pipeline<
+    impl Middleware<
+      <Self::Protocol as Protocol>::Request,
+      Response = <Self::Protocol as Protocol>::Response,
     >,
   >;
 }
