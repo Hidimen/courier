@@ -1,0 +1,19 @@
+[package]
+name = "ipc"
+description = "Used for inter-process communication"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+interprocess = { version = "2.4.4", features = ["tokio"] }
+tokio = { workspace = true, features = ["sync"] }
+tokio-mpmc.workspace = true
+bytes.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+
+logger = { path = "../logger" }
+constants = { path = "../constants" }

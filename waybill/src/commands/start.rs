@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use anyhow::Context;
 use chrono::Local;
 use clap::{Args, ValueEnum};
-use courier::depot::config::Config;
+use depot::config::Config;
 use event::events::ServerStop;
 use logger::{DefaultFormatter, Level, PrettyFormatter, flows::ConsoleFlow};
 
@@ -99,14 +99,14 @@ pub fn handle(args: StartArgs) -> anyhow::Result<()> {
 }
 
 /// Runs the server until the depot's root
-/// [`ShutdownHandle`](courier::depot::ShutdownHandle) is cancelled.
+/// [`ShutdownHandle`](depot::ShutdownHandle) is cancelled.
 ///
 /// The global singletons come first: the logger is built from
 /// `config.logger` and the event bus from `config.event`, because the pods
 /// log through the plain logging macros and announce their shutdown
 /// through the bus, so both must exist before the first pod is spawned.
 /// `builtin::run` then turns every configured listener into a pod, and
-/// [`Depot::start`](courier::depot::Depot::start) waits for the root token
+/// [`Depot::start`](depot::Depot::start) waits for the root token
 /// before joining them all, so the instance is drained before the
 /// singletons are flushed below.
 ///
@@ -186,7 +186,7 @@ async fn run_instance(config: &Config, signals: bool) -> anyhow::Result<()> {
   if signals {
     let shutdown = shutdown_handle.clone();
     tokio::spawn(async move {
-      courier::depot::wait_for_termination().await;
+      depot::wait_for_termination().await;
       if let Some(bus) = event::Dispatcher::try_get_instance() {
         bus.emit(ServerStop {
           time: {
@@ -201,7 +201,7 @@ async fn run_instance(config: &Config, signals: bool) -> anyhow::Result<()> {
       // without acting on it, so it neither interrupts the drain nor
       // reaches the default OS handler.
       loop {
-        courier::depot::wait_for_termination().await;
+        depot::wait_for_termination().await;
       }
     });
   }
@@ -262,7 +262,7 @@ mod windows {
   use super::{Config, run_blocking};
   use anyhow::Context;
   use chrono::Local;
-  use courier::depot::ShutdownHandle;
+  use depot::ShutdownHandle;
   use event::events::ServerStop;
   use windows_service::{
     define_windows_service,
