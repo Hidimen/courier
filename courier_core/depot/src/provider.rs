@@ -103,9 +103,8 @@ pub trait StreamProvider: Sized {
 /// A module implements this trait by declaring the transport its protocol
 /// runs over and supplying the protocol instance plus the middleware
 /// pipeline. Everything else — binding the transport, building the
-/// logger and event bus from the [`Config`], assembling the [`Depot`](crate::Depot) and
-/// entering the accept loop — is owned by the framework's default
-/// [`serve`](Self::serve) implementation.
+/// logger and event bus from the [`Config`](crate::config::Config), assembling the [`Depot`](crate::Depot) and
+/// entering the accept loop — is owned by the framework's default implementation.
 ///
 /// # Examples
 ///

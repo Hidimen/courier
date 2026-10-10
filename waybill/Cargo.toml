@@ -24,11 +24,12 @@ thiserror.workspace = true
 marquage.workspace = true
 chrono.workspace = true
 
-courier = { path = "../courier" }
 constants = { path = "../courier_core/constants" }
 logger = { path = "../courier_core/logger" }
+depot = { path = "../courier_core/depot" }
 builtin = { path = "../builtin" }
 event = { path = "../courier_core/event" }
+ipc = { path = "../courier_core/ipc" }
 
 [target.'cfg(windows)'.dependencies]
 windows-service = "0.8.1"

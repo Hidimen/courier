@@ -1,3 +1,4 @@
+mod ping;
 mod start;
 #[cfg(debug_assertions)]
 mod test;
@@ -15,6 +16,8 @@ pub enum Commands {
   #[cfg(debug_assertions)]
   /// Run specific test sets.
   Test(test::TestArgs),
+  /// Ping the running instance.
+  Ping(ping::PingArgs),
 }
 
 impl Commands {
@@ -24,6 +27,7 @@ impl Commands {
       Self::Version(args) => version::handle(args),
       #[cfg(debug_assertions)]
       Self::Test(args) => test::handle(args),
+      Self::Ping(args) => ping::handle(args),
     }
   }
 }

@@ -7,13 +7,12 @@ use network::{
   transport::{DatagramTransport, StreamTransport},
 };
 use protocol::{DatagramProtocol, Decoded, StreamProtocol};
-use relay::{Middleware, Pipeline};
 use sync::activity_tracker::ActivityTracker;
 use tokio::{
   task::{JoinHandle, JoinSet},
   time::sleep,
 };
-use tokio_mpmc::{ChannelError, Receiver, Sender, channel};
+use tokio_mpmc::{ChannelError, channel};
 
 use crate::{DatagramProvider, ShutdownHandle, StreamProvider};
 
@@ -170,16 +169,18 @@ impl Pod {
     let protocol = Arc::new(provider.protocol());
     let pipeline = Arc::new(provider.pipeline());
     let shutdown_handle_child = shutdown_handle.child();
+    let shutdown_handle_loop = shutdown_handle.child();
 
     let handle = tokio::spawn(async move {
       let transport = transport;
       let protocol = protocol;
       let pipeline = pipeline;
       let shutdown_handle_child = shutdown_handle_child;
+
       let (sender, receiver) = channel(1024);
-      let mut worker_pool =
-        WorkerPool { set: JoinSet::new(), sender, receiver };
+
       let mut recv_tasks = JoinSet::new();
+      let mut worker_tasks = JoinSet::new();
 
       #[cfg(not(windows))]
       {
@@ -190,11 +191,14 @@ impl Pod {
           let pipeline_cloned = pipeline.clone();
           let shutdown_handle_cloned = shutdown_handle_child.child();
           let shutdown_handle_worker = shutdown_handle_child.child();
-          let sender = worker_pool.sender();
+
+          let sender = sender.clone();
+          let receiver = receiver.clone();
 
           // recv tasks
           recv_tasks.spawn(async move {
             let mut buf: [u8; 65535] = [0; 65535];
+
             loop {
               let res = tokio::select! {
                 result = transport_cloned.recv_from(&mut buf) => result,
@@ -216,12 +220,59 @@ impl Pod {
             }
           });
 
-          worker_pool.add_worker(
-            transport_worker_cloned,
-            protocol_cloned,
-            pipeline_cloned,
-            shutdown_handle_worker,
-          );
+          worker_tasks.spawn(async move {
+            let transport = transport_worker_cloned;
+            let protocol = protocol_cloned;
+            let pipeline = pipeline_cloned;
+            let receiver = receiver;
+
+            loop {
+              let res = tokio::select! {
+                result = receiver.recv() => result,
+                _ = shutdown_handle_worker.wait() => break,
+              };
+
+              match res {
+                Ok(Some((peer_addr, frame))) => {
+                  let decoded = protocol.decode((frame, peer_addr)).await;
+                  match decoded {
+                    Ok(request) => {
+                      let response = pipeline.handle(request).await;
+                      let frame = match response {
+                        Ok(response) => match protocol.encode(response).await {
+                          Ok(frame) => frame,
+                          Err(e) => {
+                            error!("An error occurred when encoding: {}", e);
+                            break;
+                          },
+                        },
+                        Err(e) => {
+                          error!(
+                            "An error occurred when middleware processing: {}",
+                            e
+                          );
+                          break;
+                        },
+                      };
+
+                      if let Err(e) =
+                        transport.send_to(frame.as_ref(), peer_addr).await
+                      {
+                        error!("An error occurred when sending frame: {}", e);
+                      }
+                    },
+                    Err(e) => error!("An error occurred when decoding: {}", e),
+                  }
+                },
+                Ok(None) => warn!(
+                  "A `datagram worker` is stopping for worker channel has been closed"
+                ),
+                Err(_) => warn!(
+                  "A `datagram worker` is stopping for worker channel has been closed"
+                ),
+              }
+            }
+          });
         }
       }
 
@@ -229,11 +280,12 @@ impl Pod {
       {
         let transport_cloned = transport.clone();
         let shutdown_handle_cloned = shutdown_handle_child.child();
-        let sender = worker_pool.sender();
+        let sender = sender.clone();
 
         // recv tasks
-        tokio::spawn(async move {
+        recv_tasks.spawn(async move {
           let mut buf: [u8; 65535] = [0; 65535];
+
           loop {
             let res = tokio::select! {
               result = transport_cloned.recv_from(&mut buf) => result,
@@ -267,16 +319,75 @@ impl Pod {
           let protocol_cloned = protocol.clone();
           let pipeline_cloned = pipeline.clone();
           let shutdown_handle_worker = shutdown_handle_child.child();
-          worker_pool.add_worker(
-            transport_worker_cloned,
-            protocol_cloned,
-            pipeline_cloned,
-            shutdown_handle_worker,
-          );
+          let receiver = receiver.clone();
+
+          worker_tasks.spawn(async move {
+            let transport = transport_worker_cloned;
+            let protocol = protocol_cloned;
+            let pipeline = pipeline_cloned;
+            let receiver = receiver;
+
+            loop {
+              let res = tokio::select! {
+                result = receiver.recv() => result,
+                _ = shutdown_handle_worker.wait() => break,
+              };
+
+              match res {
+                Ok(Some((peer_addr, frame))) => {
+                  let decoded = protocol.decode((frame, peer_addr)).await;
+                  match decoded {
+                    Ok(request) => {
+                      let response = pipeline.handle(request).await;
+                      let frame = match response {
+                        Ok(response) => match protocol.encode(response).await {
+                          Ok(frame) => frame,
+                          Err(e) => {
+                            error!("An error occurred when encoding: {}", e);
+                            break;
+                          },
+                        },
+                        Err(e) => {
+                          error!(
+                            "An error occurred when middleware processing: {}",
+                            e
+                          );
+                          break;
+                        },
+                      };
+
+                      if let Err(e) =
+                        transport.send_to(frame.as_ref(), peer_addr).await
+                      {
+                        error!("An error occurred when sending frame: {}", e);
+                      }
+                    },
+                    Err(e) => error!("An error occurred when decoding: {}", e),
+                  }
+                },
+                Ok(None) => warn!(
+                  "A `datagram worker` is stopping for worker channel has been closed"
+                ),
+                Err(_) => warn!(
+                  "A `datagram worker` is stopping for worker channel has been closed"
+                ),
+              }
+            }
+          });
         }
       }
 
-      recv_tasks.join_all().await;
+      shutdown_handle_loop.wait().await;
+
+      // Entering stopping logic
+      let timeout =
+        sleep(Duration::from_millis(shutdown_handle_child.timeout() as u64));
+
+      tokio::select! {
+        _ = worker_tasks.join_all() => {},
+        _ = recv_tasks.join_all() => {},
+        _ = timeout => {},
+      }
     });
 
     Ok(Self { handle, shutdown_handle, name, id })
@@ -298,85 +409,5 @@ impl Pod {
 
   pub fn abort(&self) {
     self.handle.abort();
-  }
-}
-
-struct WorkerPool {
-  pub set: JoinSet<()>,
-  pub sender: Sender<(SocketAddr, Frame)>,
-  pub receiver: Receiver<(SocketAddr, Frame)>,
-}
-
-impl WorkerPool {
-  pub fn add_worker<T, P, M>(
-    &mut self, transport: Arc<T>, protocol: Arc<P>, pipeline: Arc<Pipeline<M>>,
-    shutdown_handle: ShutdownHandle,
-  ) where
-    T: DatagramTransport,
-    P: DatagramProtocol<T>,
-    M: Middleware<P::Request, Response = P::Response>,
-  {
-    let receiver = self.receiver();
-    self.set.spawn(async move {
-      let transport = transport;
-      let protocol = protocol;
-      let pipeline = pipeline;
-      let receiver = receiver;
-
-      loop {
-        let res = tokio::select! {
-          result = receiver.recv() => result,
-          _ = shutdown_handle.wait() => break,
-        };
-
-        match res {
-          Ok(Some((peer_addr, frame))) => {
-            let decoded = protocol.decode((frame, peer_addr)).await;
-            match decoded {
-              Ok(request) => {
-                let response = pipeline.handle(request).await;
-                let frame = match response {
-                  Ok(response) => match protocol.encode(response).await {
-                    Ok(frame) => frame,
-                    Err(e) => {
-                      error!("An error occurred when encoding: {}", e);
-                      break;
-                    },
-                  },
-                  Err(e) => {
-                    error!(
-                      "An error occurred when middleware processing: {}",
-                      e
-                    );
-                    break;
-                  },
-                };
-
-                if let Err(e) =
-                  transport.send_to(frame.as_ref(), peer_addr).await
-                {
-                  error!("An error occurred when sending frame: {}", e);
-                }
-              },
-              Err(e) => error!("An error occurred when decoding: {}", e),
-            }
-          },
-          Ok(None) => warn!(
-            "A `datagram worker` is stopping for worker channel has been closed"
-          ),
-          Err(_) => warn!(
-            "A `datagram worker` is stopping for worker channel has been closed"
-          ),
-        }
-      }
-    });
-  }
-
-  pub fn sender(&self) -> Sender<(SocketAddr, Frame)> {
-    self.sender.clone()
-  }
-
-  pub fn receiver(&self) -> Receiver<(SocketAddr, Frame)> {
-    self.receiver.clone()
   }
 }

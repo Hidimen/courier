@@ -278,19 +278,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "773648b94d0e5d620f64f280777445740e61fe701025087ec8b57f45c791888b"
 
 [[package]]
-name = "courier"
-version = "0.1.0-alpha.1"
-dependencies = [
- "builtin",
- "depot",
- "logger",
- "network",
- "protocol",
- "relay",
- "tokio",
-]
-
-[[package]]
 name = "cpufeatures"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -413,6 +400,7 @@ dependencies = [
  "anyhow",
  "bytes",
  "event",
+ "ipc",
  "logger",
  "marquage",
  "network",
@@ -436,6 +424,12 @@ dependencies = [
  "block-buffer",
  "crypto-common",
 ]
+
+[[package]]
+name = "doctest-file"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c2db04e74f0a9a93103b50e90b96024c9b2bdca8bce6a632ec71b88736d3d359"
 
 [[package]]
 name = "dunce"
@@ -1708,6 +1702,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "interprocess"
+version = "2.4.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6cb02ffbf25e8ef0f4a95bff054eef75f6d1bf16919474cf2caa63b21997478a"
+dependencies = [
+ "doctest-file",
+ "futures-core",
+ "libc",
+ "recvmsg",
+ "tokio",
+ "widestring",
+ "windows-sys",
+]
+
+[[package]]
 name = "io-close"
 version = "0.3.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1715,6 +1724,20 @@ checksum = "9cadcf447f06744f8ce713d2d6239bb5bde2c357a452397a9ed90c625da390bc"
 dependencies = [
  "libc",
  "winapi",
+]
+
+[[package]]
+name = "ipc"
+version = "0.1.0-alpha.1"
+dependencies = [
+ "anyhow",
+ "bytes",
+ "constants",
+ "interprocess",
+ "logger",
+ "thiserror 2.0.20",
+ "tokio",
+ "tokio-mpmc",
 ]
 
 [[package]]
@@ -2085,6 +2108,12 @@ checksum = "76afc826de14238e6e8c374ddcc1fa19e374fd8dd986b0d2af0d02377261d83c"
 dependencies = [
  "getrandom 0.3.4",
 ]
+
+[[package]]
+name = "recvmsg"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d3edd4d5d42c92f0a659926464d4cce56b562761267ecf0f469d85b7de384175"
 
 [[package]]
 name = "redox_syscall"
@@ -2621,8 +2650,9 @@ dependencies = [
  "chrono",
  "clap",
  "constants",
- "courier",
+ "depot",
  "event",
+ "ipc",
  "logger",
  "marquage",
  "thiserror 2.0.20",

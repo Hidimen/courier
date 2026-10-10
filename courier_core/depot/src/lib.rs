@@ -4,7 +4,7 @@
 //! and a custom pipeline.
 //!
 //! # Structure
-//! ```
+//! ```text
 //! transport   protocol   relay   event
 //!     \          \         /       /
 //!      \          \       /       /
@@ -47,7 +47,9 @@
 //! the process exits.
 
 pub mod config;
+pub mod control;
 pub mod depot;
+pub mod error;
 mod handle;
 mod pod;
 mod provider;
