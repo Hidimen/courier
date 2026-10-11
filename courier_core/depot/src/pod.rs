@@ -16,17 +16,18 @@ use tokio_mpmc::{ChannelError, channel};
 
 use crate::{DatagramProvider, ShutdownHandle, StreamProvider};
 
+#[derive(Debug)]
 pub struct Pod {
   pub handle: JoinHandle<()>,
   pub shutdown_handle: ShutdownHandle,
   pub name: String,
-  pub id: usize,
+  pub id: u32,
 }
 
 impl Pod {
   pub fn spawn_stream<T, P, Pvd>(
     provider: Pvd, addr: SocketAddr, shutdown_handle: ShutdownHandle,
-    name: String, id: usize,
+    name: String, id: u32,
   ) -> io::Result<Self>
   where
     T: StreamTransport,
@@ -158,7 +159,7 @@ impl Pod {
 
   pub fn spawn_datagram<T, P, Pvd>(
     provider: Pvd, addr: SocketAddr, shutdown_handle: ShutdownHandle,
-    name: String, id: usize,
+    name: String, id: u32,
   ) -> io::Result<Self>
   where
     T: DatagramTransport,
@@ -393,7 +394,7 @@ impl Pod {
     Ok(Self { handle, shutdown_handle, name, id })
   }
 
-  pub async fn shutdown(self) {
+  pub fn shutdown(&self) {
     self.shutdown_handle.shutdown();
   }
 }
@@ -403,7 +404,7 @@ impl Pod {
     &self.name
   }
 
-  pub fn id(&self) -> usize {
+  pub fn id(&self) -> u32 {
     self.id
   }
 

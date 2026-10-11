@@ -93,7 +93,7 @@ impl Dispatcher {
     let this = Arc::new(self);
 
     if DISPATCHER.set(this.clone()).is_err() {
-      panic!("Dispatcher is installed twice")
+      panic!("Dispatcher is installed twice");
     }
 
     this
@@ -103,7 +103,7 @@ impl Dispatcher {
     if let Some(this) = DISPATCHER.get() {
       this.clone()
     } else {
-      panic!("Dispatcher is not installed yet")
+      panic!("Dispatcher is not installed yet");
     }
   }
 
