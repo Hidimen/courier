@@ -1,4 +1,11 @@
-use std::{io, net::SocketAddr};
+use std::{
+  io,
+  net::SocketAddr,
+  sync::{
+    Arc, Mutex, OnceLock,
+    atomic::{AtomicU32, Ordering},
+  },
+};
 
 use ipc::LocalSocket;
 use network::transport::{DatagramTransport, StreamTransport};
@@ -8,10 +15,12 @@ use crate::{
   DatagramProvider, Pod, ShutdownHandle, StreamProvider, control::DepotCommand,
 };
 
+static INSTANCE: OnceLock<Arc<Depot>> = OnceLock::new();
+
 pub struct Depot {
-  pods: Vec<Pod>,
+  pods: Mutex<Vec<Pod>>,
   shutdown_handle: ShutdownHandle,
-  current_id: usize,
+  current_id: AtomicU32,
   ipc: LocalSocket,
 }
 
@@ -20,31 +29,48 @@ impl Depot {
   /// carries `shutdown_timeout` as its grace period.
   pub fn new(shutdown_timeout: usize) -> Self {
     Self {
-      pods: Vec::new(),
+      pods: Mutex::new(Vec::new()),
       shutdown_handle: ShutdownHandle::new(shutdown_timeout),
-      current_id: 0,
+      current_id: AtomicU32::new(0),
       ipc: LocalSocket::new::<DepotCommand>()
         .expect("Unable to start local socket"),
     }
   }
 
+  pub fn install(self) -> Arc<Self> {
+    let this = Arc::new(self);
+    if INSTANCE.set(this.clone()).is_err() {
+      panic!("Depot is installed twice");
+    }
+
+    this
+  }
+
+  pub fn get_instance() -> Arc<Self> {
+    if let Some(this) = INSTANCE.get() {
+      this.clone()
+    } else {
+      panic!("Dispatcher is not installed yet");
+    }
+  }
+
   pub fn spawn_stream<T, P, Pvd>(
-    &mut self, provider: Pvd, addr: SocketAddr,
-    shutdown_handle: ShutdownHandle, name: String,
+    &self, provider: Pvd, addr: SocketAddr, shutdown_handle: ShutdownHandle,
+    name: String,
   ) -> io::Result<()>
   where
     T: StreamTransport,
     P: StreamProtocol<T>,
     Pvd: StreamProvider<Transport = T, Protocol = P>,
   {
-    self.pods.push(Pod::spawn_stream(
+    self.pods.lock().unwrap().push(Pod::spawn_stream(
       provider,
       addr,
       shutdown_handle,
       name,
-      self.current_id,
+      self.current_id.load(Ordering::Acquire),
     )?);
-    self.current_id += 1;
+    self.current_id.fetch_add(1, Ordering::Release);
     Ok(())
   }
 
@@ -57,19 +83,19 @@ impl Depot {
     P: DatagramProtocol<T>,
     Pvd: DatagramProvider<Transport = T, Protocol = P>,
   {
-    self.pods.push(Pod::spawn_datagram(
+    self.pods.lock().unwrap().push(Pod::spawn_datagram(
       provider,
       addr,
       shutdown_handle,
       name,
-      self.current_id,
+      self.current_id.load(Ordering::Acquire),
     )?);
-    self.current_id += 1;
+    self.current_id.fetch_add(1, Ordering::Release);
     Ok(())
   }
 
   pub fn remove_pod_by_name<S: AsRef<String>>(&mut self, name: S) {
-    self.pods.retain(|ele| {
+    self.pods.lock().unwrap().retain(|ele| {
       if ele.name() == name.as_ref() {
         ele.abort();
         false
@@ -79,8 +105,8 @@ impl Depot {
     });
   }
 
-  pub fn remove_pod_by_id(&mut self, id: usize) {
-    self.pods.retain(|ele| {
+  pub fn remove_pod_by_id(&mut self, id: u32) {
+    self.pods.lock().unwrap().retain(|ele| {
       if ele.id() == id {
         ele.abort();
         false
@@ -90,6 +116,16 @@ impl Depot {
     });
   }
 
+  pub fn list_pods_info(&self) -> Vec<(u32, String)> {
+    self
+      .pods
+      .lock()
+      .unwrap()
+      .iter()
+      .map(|e| (e.id(), e.name().to_string()))
+      .collect()
+  }
+
   /// Waits for the root token to be cancelled and then joins every pod.
   ///
   /// Cancelling the root token — through [`shutdown`](Self::shutdown) or
@@ -97,11 +133,11 @@ impl Depot {
   /// — stops every pod at once. Each pod is joined afterwards, so this
   /// resolves only once every pod task has ended and the host may flush
   /// the event bus and the logger without losing records.
-  pub async fn start(self) {
+  pub async fn start(&self) {
     self.shutdown_handle.wait().await;
 
-    for pod in self.pods {
-      pod.shutdown().await;
+    for pod in self.pods.lock().unwrap().iter() {
+      pod.shutdown();
     }
   }
 

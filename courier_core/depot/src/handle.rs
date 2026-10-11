@@ -3,7 +3,7 @@ use std::ops::Deref;
 use tokio::task::JoinHandle;
 use tokio_util::sync::{CancellationToken, WaitForCancellationFuture};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ShutdownHandle(CancellationToken, usize);
 
 impl ShutdownHandle {

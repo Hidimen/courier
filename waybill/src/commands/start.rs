@@ -66,6 +66,11 @@ pub fn handle(args: StartArgs) -> anyhow::Result<()> {
     None => Config::default(),
   };
 
+  if config.pods.is_empty() {
+    eprintln!("No pods specified");
+    return Ok(());
+  }
+
   if let Some(log_level) = args.log_level {
     config.logger.level = log_level.into();
   }
@@ -160,6 +165,8 @@ async fn run_instance(config: &Config, signals: bool) -> anyhow::Result<()> {
   // and spawns its task; a listener that cannot be bound fails the whole
   // startup, which the caller reports by exiting.
   let depot = builtin::run(config).await?;
+
+  let depot = depot.install();
 
   // The depot's root token: cancelling it stops every pod at once, which
   // is exactly what every shutdown path below does.

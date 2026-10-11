@@ -30,6 +30,7 @@ depot = { path = "../courier_core/depot" }
 builtin = { path = "../builtin" }
 event = { path = "../courier_core/event" }
 ipc = { path = "../courier_core/ipc" }
+fast-rich = "0.3.3"
 
 [target.'cfg(windows)'.dependencies]
 windows-service = "0.8.1"

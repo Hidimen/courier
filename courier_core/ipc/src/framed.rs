@@ -20,7 +20,7 @@ impl Framed {
     let kind = u16::from_be_bytes([header[1], header[2]]);
     let len = u32::from_be_bytes([header[3], header[4], header[5], header[6]]);
 
-    let mut buf = BytesMut::with_capacity(len as usize);
+    let mut buf = BytesMut::zeroed(len as usize);
 
     reader.read_exact(&mut buf).await?;
 
@@ -36,7 +36,7 @@ impl Framed {
     let kind = u16::from_be_bytes([header[1], header[2]]);
     let len = u32::from_be_bytes([header[3], header[4], header[5], header[6]]);
 
-    let mut buf = BytesMut::with_capacity(len as usize);
+    let mut buf = BytesMut::zeroed(len as usize);
 
     reader.read_exact(&mut buf)?;
 

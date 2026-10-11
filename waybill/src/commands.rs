@@ -1,3 +1,4 @@
+mod list;
 mod ping;
 mod start;
 #[cfg(debug_assertions)]
@@ -18,6 +19,8 @@ pub enum Commands {
   Test(test::TestArgs),
   /// Ping the running instance.
   Ping(ping::PingArgs),
+  /// List current pods.
+  List(list::ListArgs),
 }
 
 impl Commands {
@@ -28,6 +31,7 @@ impl Commands {
       #[cfg(debug_assertions)]
       Self::Test(args) => test::handle(args),
       Self::Ping(args) => ping::handle(args),
+      Self::List(args) => list::handle(args),
     }
   }
 }
