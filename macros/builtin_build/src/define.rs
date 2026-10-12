@@ -185,11 +185,11 @@ impl ToTokens for RegistryInput {
         let run_kind = match provider.kind {
           ProviderKind::Stream => quote! {
             use depot::StreamProvider;
-            depot.spawn_stream(provider, address, shutdown_handle, pod_name.clone())?
+            depot.spawn_stream(provider, address, pod_name.clone())?
           },
           ProviderKind::Datagram => quote! {
             use depot::DatagramProvider;
-            depot.spawn_datagram(provider, address, shutdown_handle, pod_name.clone())?
+            depot.spawn_datagram(provider, address, pod_name.clone())?
           },
         };
 
@@ -244,7 +244,6 @@ impl ToTokens for RegistryInput {
         for pod in &config.pods {
           let pod_name = pod.name.clone().unwrap_or("Unnamed".to_string());
           for addr in &pod.listen {
-            let shutdown_handle = depot.child_handle();
             let address = addr.parse::<std::net::SocketAddr>()?;
             let provider_name = if let Some(name) = &pod.provider {
               name

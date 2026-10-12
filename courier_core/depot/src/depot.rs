@@ -10,30 +10,31 @@ use std::{
 use ipc::LocalSocket;
 use network::transport::{DatagramTransport, StreamTransport};
 use protocol::{DatagramProtocol, StreamProtocol};
+use sync::handle::ShutdownHandle;
 
-use crate::{
-  DatagramProvider, Pod, ShutdownHandle, StreamProvider, control::DepotCommand,
-};
+use crate::{DatagramProvider, Pod, StreamProvider, control::DepotCommand};
 
 static INSTANCE: OnceLock<Arc<Depot>> = OnceLock::new();
 
 pub struct Depot {
   pods: Mutex<Vec<Pod>>,
-  shutdown_handle: ShutdownHandle,
   current_id: AtomicU32,
   ipc: LocalSocket,
+  shutdown_handle: ShutdownHandle,
 }
 
 impl Depot {
   /// Creates an instance with no pods and a root shutdown token that
   /// carries `shutdown_timeout` as its grace period.
   pub fn new(shutdown_timeout: usize) -> Self {
+    let shutdown_handle = ShutdownHandle::new(shutdown_timeout);
+
     Self {
       pods: Mutex::new(Vec::new()),
-      shutdown_handle: ShutdownHandle::new(shutdown_timeout),
       current_id: AtomicU32::new(0),
-      ipc: LocalSocket::new::<DepotCommand>()
+      ipc: LocalSocket::new::<DepotCommand>(shutdown_handle.child())
         .expect("Unable to start local socket"),
+      shutdown_handle,
     }
   }
 
@@ -50,13 +51,12 @@ impl Depot {
     if let Some(this) = INSTANCE.get() {
       this.clone()
     } else {
-      panic!("Dispatcher is not installed yet");
+      panic!("Depot is not installed yet");
     }
   }
 
   pub fn spawn_stream<T, P, Pvd>(
-    &self, provider: Pvd, addr: SocketAddr, shutdown_handle: ShutdownHandle,
-    name: String,
+    &self, provider: Pvd, addr: SocketAddr, name: String,
   ) -> io::Result<()>
   where
     T: StreamTransport,
@@ -66,7 +66,7 @@ impl Depot {
     self.pods.lock().unwrap().push(Pod::spawn_stream(
       provider,
       addr,
-      shutdown_handle,
+      self.shutdown_handle.child(),
       name,
       self.current_id.load(Ordering::Acquire),
     )?);
@@ -75,8 +75,7 @@ impl Depot {
   }
 
   pub fn spawn_datagram<T, P, Pvd>(
-    &mut self, provider: Pvd, addr: SocketAddr,
-    shutdown_handle: ShutdownHandle, name: String,
+    &mut self, provider: Pvd, addr: SocketAddr, name: String,
   ) -> io::Result<()>
   where
     T: DatagramTransport,
@@ -86,7 +85,7 @@ impl Depot {
     self.pods.lock().unwrap().push(Pod::spawn_datagram(
       provider,
       addr,
-      shutdown_handle,
+      self.shutdown_handle.child(),
       name,
       self.current_id.load(Ordering::Acquire),
     )?);

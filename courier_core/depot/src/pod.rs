@@ -7,14 +7,14 @@ use network::{
   transport::{DatagramTransport, StreamTransport},
 };
 use protocol::{DatagramProtocol, Decoded, StreamProtocol};
-use sync::activity_tracker::ActivityTracker;
+use sync::{activity_tracker::ActivityTracker, handle::ShutdownHandle};
 use tokio::{
   task::{JoinHandle, JoinSet},
   time::sleep,
 };
 use tokio_mpmc::{ChannelError, channel};
 
-use crate::{DatagramProvider, ShutdownHandle, StreamProvider};
+use crate::{DatagramProvider, StreamProvider};
 
 #[derive(Debug)]
 pub struct Pod {
