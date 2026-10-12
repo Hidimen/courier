@@ -4,6 +4,7 @@ use interprocess::local_socket::{
   GenericNamespaced, ListenerOptions, ToNsName, tokio::prelude::*,
 };
 use logger::error;
+use sync::handle::ShutdownHandle;
 use tokio::{io::AsyncWriteExt, task::JoinHandle};
 
 use crate::{Command, Framed};
@@ -13,7 +14,7 @@ pub struct LocalSocket {
 }
 
 impl LocalSocket {
-  pub fn new<C: Command>() -> Result<Self> {
+  pub fn new<C: Command>(shutdown_handle: ShutdownHandle) -> Result<Self> {
     let name = constants::IPC_NAME.to_ns_name::<GenericNamespaced>()?;
 
     let opts = ListenerOptions::new().name(name);
@@ -21,9 +22,17 @@ impl LocalSocket {
 
     let handle = tokio::spawn(async move {
       loop {
-        let mut conn = match listener.accept().await {
+        let res = tokio::select! {
+          res = listener.accept() => res,
+          _ =shutdown_handle.wait() => break,
+        };
+
+        let mut conn = match res {
           Ok(conn) => conn,
-          Err(_) => continue,
+          Err(e) => {
+            error!("An error occurred when IPC communicates: {}", e);
+            continue;
+          },
         };
 
         tokio::spawn(async move {

@@ -437,7 +437,6 @@ dependencies = [
  "tokio",
  "tokio-mpmc",
  "tokio-test",
- "tokio-util",
 ]
 
 [[package]]
@@ -1775,6 +1774,7 @@ dependencies = [
  "constants",
  "interprocess",
  "logger",
+ "sync",
  "thiserror 2.0.20",
  "tokio",
  "tokio-mpmc",
@@ -2435,6 +2435,7 @@ name = "sync"
 version = "0.1.0-alpha.1"
 dependencies = [
  "tokio",
+ "tokio-util",
 ]
 
 [[package]]

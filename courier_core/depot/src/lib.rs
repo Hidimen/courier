@@ -50,13 +50,11 @@ pub mod config;
 pub mod control;
 pub mod depot;
 pub mod error;
-mod handle;
 mod pod;
 mod provider;
 mod signal;
 
 pub use depot::Depot;
-pub use handle::*;
 pub(crate) use pod::Pod;
 pub use provider::*;
 pub use signal::wait_for_termination;

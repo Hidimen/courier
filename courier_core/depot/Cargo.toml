@@ -13,7 +13,6 @@ marquage.workspace = true
 anyhow.workspace = true
 num_cpus = "1.17.0"
 bytes.workspace = true
-tokio-util.workspace = true
 tokio-mpmc.workspace = true
 
 network = { path = "../network" }

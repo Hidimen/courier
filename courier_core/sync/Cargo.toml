@@ -9,3 +9,4 @@ authors.workspace = true
 
 [dependencies]
 tokio = { workspace = true, features = ["sync"] }
+tokio-util.workspace = true

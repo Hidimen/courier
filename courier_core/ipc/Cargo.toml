@@ -17,3 +17,4 @@ anyhow.workspace = true
 
 logger = { path = "../logger" }
 constants = { path = "../constants" }
+sync = { path = "../sync" }

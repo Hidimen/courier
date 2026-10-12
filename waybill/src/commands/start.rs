@@ -5,7 +5,9 @@ use chrono::Local;
 use clap::{Args, ValueEnum};
 use depot::config::Config;
 use event::events::ServerStop;
-use logger::{DefaultFormatter, Level, PrettyFormatter, flows::ConsoleFlow};
+use logger::{
+  DefaultFormatter, Level, PrettyFormatter, flows::ConsoleFlow, info,
+};
 
 /// Arguments for the `start` subcommand.
 #[derive(Args)]
@@ -173,9 +175,14 @@ async fn run_instance(config: &Config, signals: bool) -> anyhow::Result<()> {
   let shutdown_handle = depot.shutdown_handle();
 
   for pod in &config.pods {
-    for addr in &pod.listen {
-      logger::info!("Listening on {}", addr);
-    }
+    let addresses: Vec<&str> = pod.listen.iter().map(String::as_str).collect();
+    info!(
+      "depot",
+      "Pod `{}` listens on {} addresses: {}",
+      pod.name.as_deref().unwrap_or("Unnamed"),
+      addresses.len(),
+      addresses.join(", ")
+    );
   }
 
   // On Windows the Service Control Manager may send `Stop` before the

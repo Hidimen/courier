@@ -10,6 +10,7 @@ use clap::Subcommand;
 #[derive(Subcommand)]
 pub enum Commands {
   /// Start a server instance.
+  #[command(alias = "run")]
   Start(start::StartArgs),
   /// Get version of software.
   #[command(alias = "ver")]

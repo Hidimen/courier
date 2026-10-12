@@ -1,6 +1,3 @@
-use std::ops::Deref;
-
-use tokio::task::JoinHandle;
 use tokio_util::sync::{CancellationToken, WaitForCancellationFuture};
 
 #[derive(Clone, Debug)]
@@ -29,15 +26,5 @@ impl ShutdownHandle {
 
   pub fn timeout(&self) -> usize {
     self.1
-  }
-}
-
-pub struct RunningHandle(pub JoinHandle<()>);
-
-impl Deref for RunningHandle {
-  type Target = JoinHandle<()>;
-
-  fn deref(&self) -> &Self::Target {
-    &self.0
   }
 }
