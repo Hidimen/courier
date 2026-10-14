@@ -1,5 +1,5 @@
 [workspace]
-members = ["builtin", "courier_core/*", "macros/*", "waybill"]
+members = ["builtin", "courier_core/*", "macros/*", "waybill", "xtask"]
 resolver = "3"
 
 [workspace.package]
@@ -9,7 +9,7 @@ rust-version = "1.98"
 license = "Apache-2.0"
 authors = ["Courier Team"]
 
-[workspace.metadata.carrier]
+[workspace.metadata.extension]
 kind = "courier"
 
 [workspace.dependencies]

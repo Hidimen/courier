@@ -1,7 +1,5 @@
 use depot::DatagramProvider;
-use network::{
-  Frame, transport::udp::UdpTransport,
-};
+use network::{Frame, transport::udp::UdpTransport};
 use protocol::{DatagramProtocol, Protocol};
 use thiserror::Error;
 
@@ -39,16 +37,14 @@ impl Protocol for EchoProtocol {
 
 impl DatagramProtocol<UdpTransport> for EchoProtocol {
   async fn decode(
-      &self, data: (Frame, std::net::SocketAddr),
-    ) -> Result<Self::Request, Self::Error>
-  {
+    &self, data: (Frame, std::net::SocketAddr),
+  ) -> Result<Self::Request, Self::Error> {
     Ok(Request(data.0))
   }
 
   async fn encode(
-      &self, response: Self::Response,
-    ) -> Result<Frame, Self::Error>
-  {
+    &self, response: Self::Response,
+  ) -> Result<Frame, Self::Error> {
     Ok(response.0)
   }
 }
