@@ -1,3 +1,4 @@
+use chrono::{Local, TimeZone};
 use clap::Args;
 
 #[derive(Args)]
@@ -8,10 +9,14 @@ pub struct VersionArgs {
 
 pub fn handle(args: VersionArgs) -> anyhow::Result<()> {
   println!(
-    "courier {} (build {}/{})",
+    "courier {} (commit {}, branch {}), built at {}",
     env!("CARGO_PKG_VERSION"),
     constants::COMMIT_ID,
-    constants::BRANCH
+    constants::BRANCH,
+    Local
+      .timestamp_opt(constants::COMPILE_TIME.parse::<i64>().unwrap(), 0)
+      .unwrap()
+      .format("%Y-%m-%d %H:%M:%S")
   );
 
   if args.show_builtins {

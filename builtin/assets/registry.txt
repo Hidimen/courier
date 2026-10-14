@@ -1,0 +1,10 @@
+echo: {
+  version => "0.1.0",
+  description => "Echo builtins",
+  provider => echo::EchoProvider as stream,
+};
+echo_udp: {
+  version => "0.1.0",
+  description => "Echo builtins for UDP transport",
+  provider => echo_udp::EchoProvider as datagram,
+};

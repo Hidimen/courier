@@ -1,0 +1,7 @@
+provider = "echo"; # Default provider
+shutdown_timeout = 10000; # Maximal processing milliseconds for shutdown
+pods = {
+  name = "example";
+  provider = "echo";
+  listen = "0.0.0.0:8080"; # You can specify more than one address
+}

@@ -276,8 +276,8 @@ mod windows {
   use super::{Config, run_blocking};
   use anyhow::Context;
   use chrono::Local;
-  use depot::ShutdownHandle;
   use event::events::ServerStop;
+  use sync::handle::ShutdownHandle;
   use windows_service::{
     define_windows_service,
     service::{
