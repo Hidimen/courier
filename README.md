@@ -14,23 +14,22 @@ rustc -V # at least 1.98
 git clone https://github.com/Hidimen/courier.git
 cd courier
 ```
-3. Download build tool `carrier`.
-```bash
-cargo install https://github.com/Hidimen/carrier.git -p cli
-carrier version
-```
 4. Build with all modules.
 ```bash
-carrier courier build --with-all-modules
+cargo xtask build --with-all-modules
 ```
 5. Run an echo server.
 On Linux:
 ```bash
-./output/courier start --provider echo
+./output/courier start --config-file ./examples/example.maq
 ```
 On windows:
 ```powershell
-./output/courier.exe start --provider echo
+./output/courier.exe start --config-file ./examples/example.maq
+```
+5. Check functionality
+```bash
+ncat 127.0.0.1 8080
 ```
 
 ### From binary

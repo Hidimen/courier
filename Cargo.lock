@@ -137,13 +137,12 @@ dependencies = [
 
 [[package]]
 name = "builtin"
-version = "0.1.0-alpha.1"
+version = "0.1.0-alpha.2"
 dependencies = [
  "anyhow",
  "depot",
  "echo",
  "echo_udp",
- "http",
  "macro_builtin_build",
  "tokio",
  "tokio-util",
@@ -259,7 +258,7 @@ checksum = "1d07550c9036bf2ae0c684c4297d503f838287c83c53686d05370d0e139ae570"
 
 [[package]]
 name = "constants"
-version = "0.1.0-alpha.1"
+version = "0.1.0-alpha.2"
 dependencies = [
  "anyhow",
  "gix",
@@ -423,7 +422,7 @@ dependencies = [
 
 [[package]]
 name = "depot"
-version = "0.1.0-alpha.1"
+version = "0.1.0-alpha.2"
 dependencies = [
  "anyhow",
  "bytes",
@@ -519,7 +518,7 @@ dependencies = [
 
 [[package]]
 name = "event"
-version = "0.1.0-alpha.1"
+version = "0.1.0-alpha.2"
 dependencies = [
  "crossbeam-channel",
  "dashmap",
@@ -1732,20 +1731,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e17592d60ebacc7d5e169f4663c5f84f9161cc90328abcfe8456f41e4dfcb284"
 
 [[package]]
-name = "http"
-version = "0.1.0"
-dependencies = [
- "depot",
- "event",
- "logger",
- "network",
- "protocol",
- "relay",
- "thiserror 2.0.20",
- "tokio",
-]
-
-[[package]]
 name = "human_format"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1812,7 +1797,7 @@ dependencies = [
 
 [[package]]
 name = "ipc"
-version = "0.1.0-alpha.1"
+version = "0.1.0-alpha.2"
 dependencies = [
  "anyhow",
  "bytes",
@@ -1936,7 +1921,7 @@ checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
 
 [[package]]
 name = "logger"
-version = "0.1.0-alpha.1"
+version = "0.1.0-alpha.2"
 dependencies = [
  "bytes",
  "chrono",
@@ -1957,7 +1942,7 @@ dependencies = [
 
 [[package]]
 name = "macro_builtin_build"
-version = "0.1.0-alpha.1"
+version = "0.1.0-alpha.2"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2024,7 +2009,7 @@ dependencies = [
 
 [[package]]
 name = "network"
-version = "0.1.0-alpha.1"
+version = "0.1.0-alpha.2"
 dependencies = [
  "bytes",
  "socket2",
@@ -2161,7 +2146,7 @@ dependencies = [
 
 [[package]]
 name = "protocol"
-version = "0.1.0-alpha.1"
+version = "0.1.0-alpha.2"
 dependencies = [
  "network",
 ]
@@ -2262,7 +2247,7 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
 name = "relay"
-version = "0.1.0-alpha.1"
+version = "0.1.0-alpha.2"
 dependencies = [
  "network",
  "protocol",
@@ -2501,7 +2486,7 @@ dependencies = [
 
 [[package]]
 name = "sync"
-version = "0.1.0-alpha.1"
+version = "0.1.0-alpha.2"
 dependencies = [
  "tokio",
  "tokio-util",
@@ -2864,7 +2849,7 @@ dependencies = [
 
 [[package]]
 name = "waybill"
-version = "0.1.0-alpha.1"
+version = "0.1.0-alpha.2"
 dependencies = [
  "anyhow",
  "builtin",
@@ -2877,6 +2862,7 @@ dependencies = [
  "ipc",
  "logger",
  "marquage",
+ "sync",
  "thiserror 2.0.20",
  "tokio",
  "tokio-util",
@@ -3086,7 +3072,7 @@ checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
 
 [[package]]
 name = "xtask"
-version = "0.1.0-alpha.1"
+version = "0.1.0-alpha.2"
 dependencies = [
  "anyhow",
  "clap",

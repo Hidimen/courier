@@ -1,8 +1,15 @@
-use std::path::PathBuf;
+use std::{
+  path::PathBuf,
+  time::{SystemTime, UNIX_EPOCH},
+};
 
 use gix::head::Kind;
 
 fn main() -> anyhow::Result<()> {
+  let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+
+  println!("cargo:rustc-env=COMPILE_TIME={now}");
+
   let repo = gix::open(
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
       .parent()
