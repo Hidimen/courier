@@ -141,6 +141,9 @@ version = "0.1.0-alpha.1"
 dependencies = [
  "anyhow",
  "depot",
+ "echo",
+ "echo_udp",
+ "http",
  "macro_builtin_build",
  "tokio",
  "tokio-util",
@@ -460,6 +463,34 @@ name = "dunce"
 version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "92773504d58c093f6de2459af4af33faa518c13451eb8f2b5698ed3d36e7c813"
+
+[[package]]
+name = "echo"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "depot",
+ "event",
+ "logger",
+ "network",
+ "protocol",
+ "relay",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "echo_udp"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "depot",
+ "event",
+ "logger",
+ "network",
+ "protocol",
+ "relay",
+ "thiserror 2.0.20",
+]
 
 [[package]]
 name = "encoding_rs"
@@ -1701,6 +1732,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e17592d60ebacc7d5e169f4663c5f84f9161cc90328abcfe8456f41e4dfcb284"
 
 [[package]]
+name = "http"
+version = "0.1.0"
+dependencies = [
+ "depot",
+ "event",
+ "logger",
+ "network",
+ "protocol",
+ "relay",
+ "thiserror 2.0.20",
+ "tokio",
+]
+
+[[package]]
 name = "human_format"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1902,6 +1947,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "loglet"
+version = "0.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6b23a072ce3d0ccbb50e8b97e6d1f10d02c727ff5fb50713fc78e43294b6ddc3"
+dependencies = [
+ "owo-colors",
+]
+
+[[package]]
 name = "macro_builtin_build"
 version = "0.1.0-alpha.1"
 dependencies = [
@@ -2013,6 +2067,12 @@ name = "once_cell_polyfill"
 version = "1.70.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
+
+[[package]]
+name = "owo-colors"
+version = "4.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "13c45bb4a6ae1280ec0803b1ef9d3455eb50f01efbbe1447ab020f1d54fba9d8"
 
 [[package]]
 name = "parking_lot"
@@ -2298,6 +2358,15 @@ dependencies = [
  "serde",
  "serde_core",
  "zmij",
+]
+
+[[package]]
+name = "serde_spanned"
+version = "1.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4e7523beb55eece201a2356bee0bbca0d1ab466c14c07703b2e0ee6d42cb0c2c"
+dependencies = [
+ "serde_core",
 ]
 
 [[package]]
@@ -2592,6 +2661,45 @@ dependencies = [
  "pin-project-lite",
  "tokio",
 ]
+
+[[package]]
+name = "toml"
+version = "1.1.8+spec-1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "20489e00e4d8741d6be680764cc12e270655e375a20d1011e844a9c3379e678d"
+dependencies = [
+ "indexmap",
+ "serde_core",
+ "serde_spanned",
+ "toml_datetime",
+ "toml_parser",
+ "toml_writer",
+ "winnow",
+]
+
+[[package]]
+name = "toml_datetime"
+version = "1.1.2+spec-1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2b86d767906c6c42421dcba507eb9d203e779497710a47782a224bb871653053"
+dependencies = [
+ "serde_core",
+]
+
+[[package]]
+name = "toml_parser"
+version = "1.1.5+spec-1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "baa693a8032d7e1cada7d0041e96126df243179ff061456783ac7f12bda4744c"
+dependencies = [
+ "winnow",
+]
+
+[[package]]
+name = "toml_writer"
+version = "1.1.3+spec-1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "06bdbd8cfc056b8d2e2e85f29b56a3bdbecb527cef81eb39e3e7b98af4652770"
 
 [[package]]
 name = "tracing"
@@ -2965,10 +3073,29 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "589f6da84c646204747d1270a2a5661ea66ed1cced2631d546fdfb155959f9ec"
 
 [[package]]
+name = "winnow"
+version = "1.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "23b97319f7b8343df12cc98938e5c3eb436064524c8d2b4e30a1d3a36eecdf81"
+
+[[package]]
 name = "wit-bindgen"
 version = "0.57.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
+
+[[package]]
+name = "xtask"
+version = "0.1.0-alpha.1"
+dependencies = [
+ "anyhow",
+ "clap",
+ "loglet",
+ "serde",
+ "tokio",
+ "toml",
+ "walkdir",
+]
 
 [[package]]
 name = "zerocopy"
