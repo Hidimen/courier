@@ -17,3 +17,4 @@ tokio = { workspace = true, features = [
 ] }
 bytes.workspace = true
 socket2 = { version = "0.6.5", features = ["all"] }
+marquage.workspace = true
