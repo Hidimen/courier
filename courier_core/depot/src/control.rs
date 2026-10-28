@@ -48,8 +48,6 @@ pub mod standard {
       buf.extend(name_bytes);
     }
 
-    println!("{:?}", buf);
-
     buf.freeze()
   }
 

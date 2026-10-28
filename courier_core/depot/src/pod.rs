@@ -120,7 +120,7 @@ impl Pod {
 
                     keep_alive = ka;
                     request_count += 1;
-                    if let Err(e) = write.write(frame.as_ref()).await {
+                    if let Err(e) = write.write_all(frame.as_ref()).await {
                       error!("An error occurred when sending frame: {}", e);
                       break;
                     }
@@ -244,7 +244,7 @@ impl Pod {
                           Ok(frame) => frame,
                           Err(e) => {
                             error!("An error occurred when encoding: {}", e);
-                            break;
+                            continue;
                           },
                         },
                         Err(e) => {
@@ -252,7 +252,7 @@ impl Pod {
                             "An error occurred when middleware processing: {}",
                             e
                           );
-                          break;
+                          continue;
                         },
                       };
 
@@ -265,12 +265,17 @@ impl Pod {
                     Err(e) => error!("An error occurred when decoding: {}", e),
                   }
                 },
-                Ok(None) => warn!(
+                Ok(None) => {
+                  warn!(
                   "A `datagram worker` is stopping for worker channel has been closed"
-                ),
-                Err(_) => warn!(
+                  );
+                  break;
+                },
+                Err(_) => {warn!(
                   "A `datagram worker` is stopping for worker channel has been closed"
-                ),
+                );
+                break;
+                },
               }
             }
           });
@@ -345,7 +350,7 @@ impl Pod {
                           Ok(frame) => frame,
                           Err(e) => {
                             error!("An error occurred when encoding: {}", e);
-                            break;
+                            continue;
                           },
                         },
                         Err(e) => {
@@ -353,7 +358,7 @@ impl Pod {
                             "An error occurred when middleware processing: {}",
                             e
                           );
-                          break;
+                          continue;
                         },
                       };
 
@@ -366,12 +371,17 @@ impl Pod {
                     Err(e) => error!("An error occurred when decoding: {}", e),
                   }
                 },
-                Ok(None) => warn!(
+                Ok(None) => {
+                  warn!(
                   "A `datagram worker` is stopping for worker channel has been closed"
-                ),
-                Err(_) => warn!(
+                  );
+                  break;
+                },
+                Err(_) => {warn!(
                   "A `datagram worker` is stopping for worker channel has been closed"
-                ),
+                );
+                break;
+                },
               }
             }
           });

@@ -195,6 +195,9 @@ pub trait WriteHalf: Send + Sync + Sized + 'static {
     async move {
       while !buf.is_empty() {
         let n = self.write(buf).await?;
+        if n == 0 {
+          return Err(Error::new(ErrorKind::WriteZero, "write returned Ok(0)"))
+        }
         buf = &buf[n..];
       }
 

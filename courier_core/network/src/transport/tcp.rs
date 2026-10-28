@@ -34,6 +34,7 @@ impl Transport for TcpTransport {
     )?;
     socket.set_reuse_address(true)?;
     socket.set_reuse_port(true)?;
+    socket.set_nonblocking(true)?;
     socket.bind(&addr.into())?;
     socket.listen(128)?;
 
@@ -65,6 +66,7 @@ impl StreamTransport for TcpTransport {
 
   async fn accept(&self) -> Result<Self::Stream> {
     let (stream, _) = self.0.accept().await?;
+    stream.set_nodelay(true)?;
 
     Ok(TcpStream::new(stream))
   }

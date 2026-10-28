@@ -25,6 +25,7 @@ impl Transport for UdpTransport {
       Socket::new(Domain::for_address(addr), Type::DGRAM, Some(Protocol::UDP))?;
     socket.set_reuse_address(true)?;
     socket.set_reuse_port(true)?;
+    socket.set_nonblocking(true)?;
     socket.bind(&addr.into())?;
 
     let std_socket: std::net::UdpSocket = socket.into();
