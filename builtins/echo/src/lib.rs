@@ -1,8 +1,8 @@
 use depot::{self, StreamProvider};
 use network::{
-  Frame, KeepAlive, stream::ReadHalf, transport::tcp::TcpTransport,
+  transport::tcp::TcpTransport,
 };
-use protocol::{Decoded, Protocol, StreamProtocol};
+use protocol::{Payload, Protocol, stream::*};
 use thiserror::Error;
 
 /// Error type for the echo protocol.
@@ -14,8 +14,10 @@ pub enum EchoError {
 }
 
 /// The echo protocol.
-#[derive(Clone, Copy)]
-pub struct EchoProtocol;
+#[derive(Clone)]
+pub struct EchoProtocol {
+  buf: Vec<Payload>
+}
 
 /// A request carrying the received bytes as a string.
 pub struct Request(pub Vec<u8>);
@@ -25,37 +27,30 @@ pub struct Response(pub Vec<u8>);
 
 impl Protocol for EchoProtocol {
   type Error = EchoError;
-  type Request = Request;
-  type Response = Response;
-
-  fn name() -> &'static str {
-    "protocol:echo"
-  }
-
-  fn version() -> &'static str {
-    env!("CARGO_PKG_VERSION")
-  }
+  type Command = ();
+  
+  const NAME: &'static str = "courier:echo";
 }
 
-impl StreamProtocol<TcpTransport> for EchoProtocol {
-  async fn decode(
-    &self,
-    read_half: &mut <TcpTransport as network::transport::StreamTransport>::ReadHalf,
-  ) -> Result<Decoded<Self::Request>, Self::Error> {
-    let mut buf = [0u8; 1024];
-    let count = read_half.read(&mut buf).await?;
-
-    if count > 0 {
-      Ok(Decoded::Open(Request(buf[..count].to_vec())))
-    } else {
-      Ok(Decoded::Closed)
+impl StreamProtocol for EchoProtocol {
+  fn step(
+      &mut self, ctx: &mut Context<'_>, input: Input<Self::Command>,
+    ) -> Result<(), Self::Error>
+  {
+    match input {
+      Input::Opened => Ok(()),
+      Input::Closed(_) => Ok(()),
+      Input::Data(bytes) => {
+        if let Err(payload) = ctx.write_bytes(bytes) {
+          self.buf.push(payload);
+          Ok(())
+        }else {
+          Ok(())
+        }
+      },
+      Input::Command(_) => Ok(()),
+      Input::Timer(_) => Ok(())
     }
-  }
-
-  async fn encode(
-    &self, response: Self::Response,
-  ) -> Result<(network::Frame, network::KeepAlive), Self::Error> {
-    Ok((Frame::from_owner(response.0), KeepAlive::Keep))
   }
 }
 
@@ -70,19 +65,7 @@ impl StreamProvider for EchoProvider {
   type Transport = TcpTransport;
   type Protocol = EchoProtocol;
 
-  fn protocol(&self) -> Self::Protocol {
-    EchoProtocol
-  }
-
-  fn create() -> Self {
-    Self
-  }
-
-  fn pipeline(
-    &self,
-  ) -> relay::Pipeline<impl relay::Middleware<Request, Response = Response>> {
-    relay::Builder::default()
-      .then(|request: Request| Response(request.0))
-      .build()
+  fn protocol() -> Self::Protocol {
+    EchoProtocol { buf: Vec::new() }
   }
 }

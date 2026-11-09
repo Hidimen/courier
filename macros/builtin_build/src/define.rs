@@ -184,18 +184,15 @@ impl ToTokens for RegistryInput {
         let path = provider.path;
         let run_kind = match provider.kind {
           ProviderKind::Stream => quote! {
-            use depot::StreamProvider;
-            depot.spawn_stream(provider, address, pod_name.clone())?
+            depot.spawn_stream::<#path>(address, pod_name.clone())?
           },
           ProviderKind::Datagram => quote! {
-            use depot::DatagramProvider;
-            depot.spawn_datagram(provider, address, pod_name.clone())?
+            depot.spawn_datagram::<#path>(address, pod_name.clone())?
           },
         };
 
         Some(quote! {
           #name => {
-            let provider = #path::create();
             #run_kind
           }
         })
@@ -240,7 +237,7 @@ impl ToTokens for RegistryInput {
       pub async fn run(
         config: &depot::config::Config,
       ) -> anyhow::Result<depot::Depot> {
-        let mut depot = depot::Depot::new(config.shutdown_timeout);
+        let depot = depot::Depot::new(config.shutdown_timeout);
         for pod in &config.pods {
           let pod_name = pod.name.clone().unwrap_or("Unnamed".to_string());
           for addr in &pod.listen {

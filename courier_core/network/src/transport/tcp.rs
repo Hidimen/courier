@@ -92,6 +92,10 @@ impl Stream for TcpStream {
     self.0.write(buf).await
   }
 
+  async fn writable(&mut self) -> Result<()> {
+    self.0.writable().await
+  }
+
   async fn flush(&mut self) -> Result<()> {
     self.0.flush().await
   }
@@ -156,6 +160,10 @@ impl WriteHalf for TcpWriteHalf {
     self.0.write(buf).await
   }
 
+  async fn writable(&mut self) -> Result<()> {
+    self.0.writable().await
+  }
+
   fn local_addr(&self) -> Result<SocketAddr> {
     self.0.local_addr()
   }
@@ -170,5 +178,9 @@ impl WriteHalf for TcpWriteHalf {
 
   async fn flush(&mut self) -> Result<()> {
     self.0.flush().await
+  }
+
+  async fn shutdown(&mut self) -> Result<()> {
+    self.0.shutdown().await
   }
 }

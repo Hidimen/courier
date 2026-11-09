@@ -21,6 +21,7 @@ crossbeam-channel = "0.5.15"
 anyhow = "1.0.104"
 bytes = "1.11.1"
 chrono = "0.4.45"
+ringbuf = "0.6.0"
 
 marquage = { git = "https://github.com/Hidimen/marquage.git" }
 

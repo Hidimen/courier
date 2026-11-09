@@ -49,6 +49,7 @@
 pub mod config;
 pub mod control;
 pub mod depot;
+pub(crate) mod driver;
 pub mod error;
 mod pod;
 mod provider;

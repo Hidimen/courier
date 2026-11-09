@@ -26,6 +26,11 @@ pub trait Stream: Send + Sync + 'static {
   fn write(&mut self, buf: &[u8])
   -> impl Future<Output = Result<usize>> + Send;
 
+  /// Waits for writable event.
+  ///
+  /// This method will be yielding until `writable` event comes in.
+  fn writable(&mut self) -> impl Future<Output = Result<()>> + Send;
+
   /// Flushes any buffered writes to the underlying transport.
   fn flush(&mut self) -> impl Future<Output = Result<()>> + Send;
 
@@ -90,6 +95,9 @@ pub trait Stream: Send + Sync + 'static {
     async move {
       while !buf.is_empty() {
         let n = self.write(buf).await?;
+        if n == 0 {
+          return Err(Error::new(ErrorKind::WriteZero, "write returned Ok(0)"));
+        }
         buf = &buf[n..];
       }
 
@@ -174,6 +182,11 @@ pub trait WriteHalf: Send + Sync + Sized + 'static {
   fn write(&mut self, buf: &[u8])
   -> impl Future<Output = Result<usize>> + Send;
 
+  /// Waits for writable event.
+  ///
+  /// This method will be yielding until `writable` event comes in.
+  fn writable(&mut self) -> impl Future<Output = Result<()>> + Send;
+
   /// Returns the local address of this stream.
   fn local_addr(&self) -> Result<SocketAddr>;
 
@@ -196,7 +209,7 @@ pub trait WriteHalf: Send + Sync + Sized + 'static {
       while !buf.is_empty() {
         let n = self.write(buf).await?;
         if n == 0 {
-          return Err(Error::new(ErrorKind::WriteZero, "write returned Ok(0)"))
+          return Err(Error::new(ErrorKind::WriteZero, "write returned Ok(0)"));
         }
         buf = &buf[n..];
       }
@@ -206,4 +219,6 @@ pub trait WriteHalf: Send + Sync + Sized + 'static {
   }
 
   fn flush(&mut self) -> impl Future<Output = Result<()>> + Send;
+
+  fn shutdown(&mut self) -> impl Future<Output = Result<()>> + Send;
 }

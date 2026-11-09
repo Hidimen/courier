@@ -8,8 +8,6 @@ use std::{
 };
 
 use ipc::LocalSocket;
-use network::transport::{DatagramTransport, StreamTransport};
-use protocol::{DatagramProtocol, StreamProtocol};
 use sync::handle::ShutdownHandle;
 
 use crate::{DatagramProvider, Pod, StreamProvider, control::DepotCommand};
@@ -55,16 +53,13 @@ impl Depot {
     }
   }
 
-  pub fn spawn_stream<T, P, Pvd>(
-    &self, provider: Pvd, addr: SocketAddr, name: String,
+  pub fn spawn_stream<Pvd>(
+    &self, addr: SocketAddr, name: String,
   ) -> io::Result<()>
   where
-    T: StreamTransport,
-    P: StreamProtocol<T>,
-    Pvd: StreamProvider<Transport = T, Protocol = P>,
+    Pvd: StreamProvider,
   {
-    self.pods.lock().unwrap().push(Pod::spawn_stream(
-      provider,
+    self.pods.lock().unwrap().push(Pod::spawn_stream::<Pvd>(
       addr,
       self.shutdown_handle.child(),
       name,
@@ -74,16 +69,13 @@ impl Depot {
     Ok(())
   }
 
-  pub fn spawn_datagram<T, P, Pvd>(
-    &mut self, provider: Pvd, addr: SocketAddr, name: String,
+  pub fn spawn_datagram<Pvd>(
+    &self, addr: SocketAddr, name: String,
   ) -> io::Result<()>
   where
-    T: DatagramTransport,
-    P: DatagramProtocol<T>,
-    Pvd: DatagramProvider<Transport = T, Protocol = P>,
+    Pvd: DatagramProvider,
   {
-    self.pods.lock().unwrap().push(Pod::spawn_datagram(
-      provider,
+    self.pods.lock().unwrap().push(Pod::spawn_datagram::<Pvd>(
       addr,
       self.shutdown_handle.child(),
       name,
