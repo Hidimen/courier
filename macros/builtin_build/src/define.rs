@@ -184,10 +184,10 @@ impl ToTokens for RegistryInput {
         let path = provider.path;
         let run_kind = match provider.kind {
           ProviderKind::Stream => quote! {
-            depot.spawn_stream::<#path>(address, pod_name.clone())?
+            depot.run_stream::<#path>(address)?
           },
           ProviderKind::Datagram => quote! {
-            depot.spawn_datagram::<#path>(address, pod_name.clone())?
+            depot.run_datagram::<#path>(address)?
           },
         };
 
@@ -235,23 +235,20 @@ impl ToTokens for RegistryInput {
     tokens.extend(quote! {
       #[doc(hidden)]
       pub async fn run(
-        config: &depot::config::Config,
+        config: &depot::Config,
       ) -> anyhow::Result<depot::Depot> {
-        let depot = depot::Depot::new(config.shutdown_timeout);
-        for pod in &config.pods {
-          let pod_name = pod.name.clone().unwrap_or("Unnamed".to_string());
-          for addr in &pod.listen {
-            let address = addr.parse::<std::net::SocketAddr>()?;
-            let provider_name = if let Some(name) = &pod.provider {
-              name
-            }else {
-              anyhow::bail!("No provider specified");
-            };
-            match provider_name.as_str() {
-              #(#run_arms,)*
-              other => anyhow::bail!("No provider named `{other}` is registered"),
-            };
-          }
+        let mut depot = depot::Depot::new(config.shutdown_timeout);
+        for addr in &config.listen {
+          let address = addr.parse::<std::net::SocketAddr>()?;
+          let provider_name = if let Some(name) = &config.provider {
+            name
+          }else {
+            anyhow::bail!("No provider specified");
+          };
+          match provider_name.as_str() {
+            #(#run_arms,)*
+            other => anyhow::bail!("No provider named `{other}` is registered"),
+          };
         }
 
         Ok(depot)

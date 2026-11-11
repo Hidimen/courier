@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use anyhow::Context;
 use chrono::Local;
 use clap::{Args, ValueEnum};
-use depot::config::Config;
+use depot::Config;
 use event::events::ServerStop;
 use logger::{
   DefaultFormatter, Level, PrettyFormatter, flows::ConsoleFlow, info,
@@ -68,11 +68,6 @@ pub fn handle(args: StartArgs) -> anyhow::Result<()> {
     None => Config::default(),
   };
 
-  if config.pods.is_empty() {
-    eprintln!("No pods specified");
-    return Ok(());
-  }
-
   if let Some(log_level) = args.log_level {
     config.logger.level = log_level.into();
   }
@@ -81,26 +76,7 @@ pub fn handle(args: StartArgs) -> anyhow::Result<()> {
     config.shutdown_timeout = shutdown_timeout;
   }
 
-  // `--provider` overrides the config file's top-level `provider`, and the
-  // resulting value is the fallback for every pod that names none of its
-  // own. A provider is not needed to run the instance itself — the pods
-  // resolve theirs — so it is only required for pods that would end up
-  // without one.
-  let provider = args.provider.or_else(|| config.provider.clone());
-  for pod in &mut config.pods {
-    if pod.provider.is_none() {
-      pod.provider = provider.clone();
-    }
-  }
-
-  if let Some(pod) = config.pods.iter().find(|pod| pod.provider.is_none()) {
-    anyhow::bail!(
-      "No provider has been specified for the listener `{}`: pass \
-       `--provider`, set `provider` in the pod, or set the top-level \
-       `provider` in the config file",
-      pod.name.as_deref().unwrap_or("Unnamed")
-    );
-  }
+  config.provider = args.provider;
 
   run(config)
 }
@@ -168,22 +144,17 @@ async fn run_instance(config: &Config, signals: bool) -> anyhow::Result<()> {
   // startup, which the caller reports by exiting.
   let depot = builtin::run(config).await?;
 
-  let depot = depot.install();
-
   // The depot's root token: cancelling it stops every pod at once, which
   // is exactly what every shutdown path below does.
   let shutdown_handle = depot.shutdown_handle();
 
-  for pod in &config.pods {
-    let addresses: Vec<&str> = pod.listen.iter().map(String::as_str).collect();
-    info!(
-      "depot",
-      "Pod `{}` listens on {} addresses: {}",
-      pod.name.as_deref().unwrap_or("Unnamed"),
-      addresses.len(),
-      addresses.join(", ")
-    );
-  }
+  let addresses: Vec<&str> = config.listen.iter().map(String::as_str).collect();
+  info!(
+    "depot",
+    "Server listens on {} addresses: {}",
+    addresses.len(),
+    addresses.join(", ")
+  );
 
   // On Windows the Service Control Manager may send `Stop` before the
   // depot has finished starting. The control handler records that intent
@@ -222,7 +193,7 @@ async fn run_instance(config: &Config, signals: bool) -> anyhow::Result<()> {
 
   // Wait for the root token and join every pod, so that nothing is still
   // serving once the caller flushes the global singletons.
-  depot.start().await;
+  depot.wait().await;
 
   Ok(())
 }

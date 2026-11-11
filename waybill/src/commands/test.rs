@@ -24,7 +24,7 @@ mod config {
 
   use anyhow::Context;
   use clap::{Args, ValueEnum};
-  use depot::config::Config;
+  use depot::Config;
   use marquage::Map;
 
   #[derive(Debug, Args)]

@@ -1,23 +1,20 @@
 use std::{
-  io,
+  io::{self, ErrorKind},
   net::SocketAddr,
-  sync::{
-    Arc, Mutex, OnceLock,
-    atomic::{AtomicU32, Ordering},
-  },
+  sync::Arc,
+  time::Duration,
 };
 
-use ipc::LocalSocket;
-use sync::handle::ShutdownHandle;
+use logger::error;
+use network::transport::{StreamTransport, Transport};
+use sync::{activity_tracker::ActivityTracker, handle::ShutdownHandle};
+use tokio::{task::JoinSet, time::sleep};
 
-use crate::{DatagramProvider, Pod, StreamProvider, control::DepotCommand};
-
-static INSTANCE: OnceLock<Arc<Depot>> = OnceLock::new();
+use crate::{StreamProvider, driver::drive_stream};
 
 pub struct Depot {
-  pods: Mutex<Vec<Pod>>,
-  current_id: AtomicU32,
-  ipc: LocalSocket,
+  handles: JoinSet<()>,
+  // ipc: LocalSocket,
   shutdown_handle: ShutdownHandle,
 }
 
@@ -28,93 +25,72 @@ impl Depot {
     let shutdown_handle = ShutdownHandle::new(shutdown_timeout);
 
     Self {
-      pods: Mutex::new(Vec::new()),
-      current_id: AtomicU32::new(0),
-      ipc: LocalSocket::new::<DepotCommand>(shutdown_handle.child())
-        .expect("Unable to start local socket"),
+      handles: JoinSet::new(),
+      // ipc: LocalSocket::new::<DepotCommand>(shutdown_handle.child())
+      //   .expect("Unable to start local socket"),
       shutdown_handle,
     }
   }
 
-  pub fn install(self) -> Arc<Self> {
-    let this = Arc::new(self);
-    if INSTANCE.set(this.clone()).is_err() {
-      panic!("Depot is installed twice");
-    }
-
-    this
-  }
-
-  pub fn get_instance() -> Arc<Self> {
-    if let Some(this) = INSTANCE.get() {
-      this.clone()
-    } else {
-      panic!("Depot is not installed yet");
-    }
-  }
-
-  pub fn spawn_stream<Pvd>(
-    &self, addr: SocketAddr, name: String,
-  ) -> io::Result<()>
+  pub fn run_stream<Pvd>(&mut self, addr: SocketAddr) -> io::Result<()>
   where
     Pvd: StreamProvider,
   {
-    self.pods.lock().unwrap().push(Pod::spawn_stream::<Pvd>(
-      addr,
-      self.shutdown_handle.child(),
-      name,
-      self.current_id.load(Ordering::Acquire),
-    )?);
-    self.current_id.fetch_add(1, Ordering::Release);
-    Ok(())
-  }
+    let transport = <Pvd::Transport as Transport>::bind(addr)?;
+    let shutdown_handle_child = self.child_handle();
 
-  pub fn spawn_datagram<Pvd>(
-    &self, addr: SocketAddr, name: String,
-  ) -> io::Result<()>
-  where
-    Pvd: DatagramProvider,
-  {
-    self.pods.lock().unwrap().push(Pod::spawn_datagram::<Pvd>(
-      addr,
-      self.shutdown_handle.child(),
-      name,
-      self.current_id.load(Ordering::Acquire),
-    )?);
-    self.current_id.fetch_add(1, Ordering::Release);
-    Ok(())
-  }
+    self.handles.spawn(async move {
+      let connection_count = Arc::new(ActivityTracker::new());
 
-  pub fn remove_pod_by_name<S: AsRef<String>>(&mut self, name: S) {
-    self.pods.lock().unwrap().retain(|ele| {
-      if ele.name() == name.as_ref() {
-        ele.abort();
-        false
-      } else {
-        true
+      loop {
+        let res = tokio::select! {
+          result = transport.accept() => result,
+          _ = shutdown_handle_child.wait() => break
+        };
+
+        match res {
+          Ok(stream) => {
+            let protocol = Pvd::protocol();
+            let child = shutdown_handle_child.child();
+            let connection_count_cloned = connection_count.clone();
+
+            tokio::spawn(async move {
+              drive_stream(protocol, child, connection_count_cloned, stream)
+                .await;
+            });
+          },
+          Err(e) => match e.kind() {
+            ErrorKind::ConnectionAborted => {
+              error!("A connection aborted, retrying");
+            },
+            ErrorKind::WouldBlock => {
+              continue;
+            },
+            ErrorKind::NetworkDown
+            | ErrorKind::NetworkUnreachable
+            | ErrorKind::HostUnreachable => {
+              error!("A momentary mistake occurred, retrying");
+              continue;
+            },
+            _ => {
+              error!("An unrecoverable error occurred, graceful exiting");
+              break;
+            },
+          },
+        }
+      }
+
+      // Entering stopping logic
+      let timeout =
+        sleep(Duration::from_millis(shutdown_handle_child.timeout() as u64));
+
+      tokio::select! {
+        _ = connection_count.wait() => {},
+        _ = timeout => {},
       }
     });
-  }
 
-  pub fn remove_pod_by_id(&mut self, id: u32) {
-    self.pods.lock().unwrap().retain(|ele| {
-      if ele.id() == id {
-        ele.abort();
-        false
-      } else {
-        true
-      }
-    });
-  }
-
-  pub fn list_pods_info(&self) -> Vec<(u32, String)> {
-    self
-      .pods
-      .lock()
-      .unwrap()
-      .iter()
-      .map(|e| (e.id(), e.name().to_string()))
-      .collect()
+    Ok(())
   }
 
   /// Waits for the root token to be cancelled and then joins every pod.
@@ -124,12 +100,8 @@ impl Depot {
   /// — stops every pod at once. Each pod is joined afterwards, so this
   /// resolves only once every pod task has ended and the host may flush
   /// the event bus and the logger without losing records.
-  pub async fn start(&self) {
-    self.shutdown_handle.wait().await;
-
-    for pod in self.pods.lock().unwrap().iter() {
-      pod.shutdown();
-    }
+  pub async fn wait(self) {
+    self.handles.join_all().await;
   }
 
   /// Returns the instance-wide (root) shutdown handle.
@@ -146,10 +118,5 @@ impl Depot {
   /// this is the handle a pod is created with.
   pub fn child_handle(&self) -> ShutdownHandle {
     self.shutdown_handle.child()
-  }
-
-  pub fn shutdown(&self) {
-    self.ipc.abort();
-    self.shutdown_handle.shutdown();
   }
 }

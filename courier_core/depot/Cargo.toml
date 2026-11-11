@@ -14,7 +14,6 @@ anyhow.workspace = true
 num_cpus = "1.17.0"
 bytes.workspace = true
 tokio-mpmc.workspace = true
-ringbuf.workspace = true
 
 network = { path = "../network" }
 relay = { path = "../relay" }
@@ -26,3 +25,7 @@ sync = { path = "../sync" }
 
 [dev-dependencies]
 tokio-test = "0.4.5"
+
+[[bench]]
+name = "timer_set"
+harness = false
