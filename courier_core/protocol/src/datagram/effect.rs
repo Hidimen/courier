@@ -1,30 +1,16 @@
-use std::time::Instant;
+use std::{mem::take, time::Instant};
 
 use crate::{TimerId, datagram::close::CloseMode};
 
-#[derive(Debug, Clone, Copy)]
-pub enum Effect {
-  Flush,
-  Close(CloseMode),
-
-  PauseRead,
-  ResumeRead,
-
-  ArmTimer { id: TimerId, at: Instant },
-  CancelTimer(TimerId),
-
-  NoOp,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum TimerOp {
+pub enum TimerOp {
   Create(Instant),
   Remove,
 }
 
 pub struct EffectBuf {
   flush: bool,
-  read_pause: bool,
+  read_pause: Option<bool>,
   close: Option<CloseMode>,
   timers: Vec<(TimerId, TimerOp)>,
 }
@@ -37,7 +23,7 @@ impl Default for EffectBuf {
 
 impl EffectBuf {
   pub fn new() -> Self {
-    Self { flush: false, read_pause: false, close: None, timers: Vec::new() }
+    Self { flush: false, read_pause: None, close: None, timers: Vec::new() }
   }
 
   pub fn flush(&mut self) {
@@ -45,11 +31,11 @@ impl EffectBuf {
   }
 
   pub fn pause_read(&mut self) {
-    self.read_pause = true;
+    self.read_pause = Some(true);
   }
 
   pub fn resume_read(&mut self) {
-    self.read_pause = false;
+    self.read_pause = Some(false);
   }
 
   pub fn close(&mut self, mode: CloseMode) {
@@ -73,30 +59,19 @@ impl EffectBuf {
     self.timers.push((id, TimerOp::Remove));
   }
 
-  pub fn take_timer_effect(
-    &mut self,
-  ) -> impl std::iter::Iterator<Item = Effect> {
-    let list = std::mem::take(&mut self.timers);
-    list.into_iter().map(|(id, op)| match op {
-      TimerOp::Create(at) => Effect::ArmTimer { id, at },
-      TimerOp::Remove => Effect::CancelTimer(id),
-    })
+  pub fn take_timer_effect(&mut self) -> Vec<(TimerId, TimerOp)> {
+    take(&mut self.timers)
   }
 
-  pub fn take_flush_effect(&mut self) -> Effect {
-    if self.flush {
-      self.flush = false;
-      Effect::Flush
-    } else {
-      Effect::NoOp
-    }
+  pub fn take_flush_effect(&mut self) -> bool {
+    take(&mut self.flush)
   }
 
-  pub fn take_reader_effect(&mut self) -> Effect {
-    if self.read_pause { Effect::PauseRead } else { Effect::ResumeRead }
+  pub fn take_reader_effect(&mut self) -> Option<bool> {
+    take(&mut self.read_pause)
   }
 
-  pub fn take_close_effect(&mut self) -> Effect {
-    if let Some(mode) = self.close { Effect::Close(mode) } else { Effect::NoOp }
+  pub fn take_close_effect(&mut self) -> Option<CloseMode> {
+    take(&mut self.close)
   }
 }

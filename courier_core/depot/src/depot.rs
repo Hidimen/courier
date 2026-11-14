@@ -7,15 +7,19 @@ use std::{
 
 use logger::error;
 use network::transport::{StreamTransport, Transport};
+use protocol::Protocol;
 use sync::{activity_tracker::ActivityTracker, handle::ShutdownHandle};
 use tokio::{task::JoinSet, time::sleep};
 
-use crate::{StreamProvider, driver::drive_stream};
+use crate::{
+  DatagramProvider, Metrics, StreamProvider,
+  driver::{drive_datagram, drive_stream},
+};
 
 pub struct Depot {
   handles: JoinSet<()>,
-  // ipc: LocalSocket,
   shutdown_handle: ShutdownHandle,
+  metrics: Metrics,
 }
 
 impl Depot {
@@ -26,16 +30,17 @@ impl Depot {
 
     Self {
       handles: JoinSet::new(),
-      // ipc: LocalSocket::new::<DepotCommand>(shutdown_handle.child())
-      //   .expect("Unable to start local socket"),
       shutdown_handle,
+      metrics: Metrics { transport: "<Unknown>", protocol: "<Unknown>" },
     }
   }
 
-  pub fn run_stream<Pvd>(&mut self, addr: SocketAddr) -> io::Result<()>
-  where
-    Pvd: StreamProvider,
-  {
+  pub fn run_stream<Pvd: StreamProvider>(
+    &mut self, addr: SocketAddr,
+  ) -> io::Result<()> {
+    self.metrics.transport = Pvd::Transport::NAME;
+    self.metrics.protocol = <Pvd::Protocol as Protocol>::NAME;
+
     let transport = <Pvd::Transport as Transport>::bind(addr)?;
     let shutdown_handle_child = self.child_handle();
 
@@ -93,6 +98,22 @@ impl Depot {
     Ok(())
   }
 
+  pub fn run_datagram<Pvd: DatagramProvider>(
+    &mut self, addr: SocketAddr,
+  ) -> io::Result<()> {
+    self.metrics.transport = Pvd::Transport::NAME;
+    self.metrics.protocol = <Pvd::Protocol as Protocol>::NAME;
+
+    let transport = <Pvd::Transport as Transport>::bind(addr)?;
+    let shutdown_handle_child = self.child_handle();
+
+    self.handles.spawn(async move {
+      drive_datagram(Pvd::protocol(), shutdown_handle_child, transport).await;
+    });
+
+    Ok(())
+  }
+
   /// Waits for the root token to be cancelled and then joins every pod.
   ///
   /// Cancelling the root token — through [`shutdown`](Self::shutdown) or
@@ -118,5 +139,9 @@ impl Depot {
   /// this is the handle a pod is created with.
   pub fn child_handle(&self) -> ShutdownHandle {
     self.shutdown_handle.child()
+  }
+
+  pub fn metrics(&self) -> &Metrics {
+    &self.metrics
   }
 }

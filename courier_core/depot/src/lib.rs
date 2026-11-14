@@ -46,16 +46,18 @@
 //! Once every connection task has finished, the host flushes the event bus and the logger before
 //! the process exits.
 
-mod config;
+pub mod config;
 pub mod depot;
 pub(crate) mod driver;
 pub mod error;
-mod provider;
+mod metrics;
+pub mod provider;
 mod signal;
 #[doc(hidden)]
 pub mod timer;
 
 pub use config::Config;
 pub use depot::Depot;
-pub use provider::*;
+pub use metrics::Metrics;
+pub use provider::{DatagramProvider, StreamProvider};
 pub use signal::wait_for_termination;

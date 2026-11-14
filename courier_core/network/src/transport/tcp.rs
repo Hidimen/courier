@@ -14,6 +14,8 @@ use crate::{
 pub struct TcpTransport(tokio::net::TcpListener);
 
 impl Transport for TcpTransport {
+  const NAME: &'static str = "courier:tcp";
+
   fn bind(addr: SocketAddr) -> Result<Self> {
     /*
       To avoid Tokio panic, set_nonblocking is necessary.

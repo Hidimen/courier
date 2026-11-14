@@ -6,9 +6,6 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
-[package.metadata.extension]
-provider = "EchoProvider as stream"
-
 [lib]
 doc = false
 
@@ -16,6 +13,7 @@ doc = false
 thiserror = "2.0.18"
 anyhow = "1.0.104"
 
+extension = { path = "../../courier_core/extension" }
 depot = { path = "../../courier_core/depot" }
 relay = { path = "../../courier_core/relay" }
 network = { path = "../../courier_core/network" }

@@ -1,17 +1,20 @@
 //! Built-in module discovery and artifact generation.
 //!
-//! This module carries over the standalone `courier-build` `generate.rs`
-//! (former `generate.py`): it discovers the built-in modules declared in the
-//! `builtins` directory of the project, filters them by the `--with-modules`
-//! selection, then rewrites the artifacts that wire the selected modules into
-//! the workspace:
+//! This module discovers the built-in modules declared in the `builtins`
+//! directory of the project, filters them by the `--with-modules` selection,
+//! then rewrites the artifacts that wire the selected modules into the
+//! workspace:
 //!
-//! - `builtin/Cargo.toml` — the `# AUTOGEN DEP: START #` dependency
-//!   section, registering each selected module as a path dependency. The
-//!   `[features]` section is never touched;
-//! - `builtin/assets/registry.txt` — the `name: { version, description,
-//!   provider }` module registry consumed by the `module_register!` proc
-//!   macro in the `builtin` crate.
+//! - `waybill/Cargo.toml` — the `# AUTOGEN DEP: START #` dependency section,
+//!   registering each selected module as a path dependency;
+//! - `waybill/src/builtin/modules.rs` — the generated module table holding
+//!   `register_all`, which calls every selected module's
+//!   `builtin_module_entry`.
+//!
+//! Generating Rust source instead of a custom registry format keeps the
+//! artifacts inside Cargo's dependency graph: editing a module manifest
+//! changes a tracked input, so `waybill` is rebuilt, the output is navigable
+//! in an IDE, and diagnostics point at real lines.
 //!
 //! Every artifact is written directly into the real project tree. Unlike the
 //! carrier build crate there is no `.courier` mirror and no hard-link
@@ -22,32 +25,31 @@ use std::path::{Path, PathBuf};
 
 use loglet::{error, info};
 
-use crate::define::ExtensionManifest;
+use crate::define::ModuleManifest;
 use crate::git_cloner::GitCloner;
 use crate::paths::*;
 use crate::{BuiltinModule, Placeholder};
 
-/// The generated manifest and registry paths.
+/// The generated manifest and module table paths.
 struct GeneratedPaths {
-  builtin_manifest: PathBuf,
-  registry: PathBuf,
+  waybill_manifest: PathBuf,
+  modules: PathBuf,
 }
 
 /// Resolves the generated artifact paths of the project.
 fn generated_paths(root: &Path) -> GeneratedPaths {
   GeneratedPaths {
-    builtin_manifest: builtin_manifest_path(root),
-    registry: registry_asset_path(root),
+    waybill_manifest: waybill_manifest_path(root),
+    modules: modules_source_path(root),
   }
 }
 
 /// Discovers every built-in module declared in the `builtins` directory of
 /// the project.
 ///
-/// Each directory is expected to contain a `Cargo.toml` with a
-/// `[package.metadata.extension]` section; the section's `provider` field is
-/// optional. A plain file is treated as a placeholder: it may point at a
-/// local `dir` or at a `git` URL that is cloned into `build_cache/`.
+/// Every directory containing a `Cargo.toml` is a builtin module. A plain
+/// file is treated as a placeholder: it may point at a local `dir` or at a
+/// `git` URL that is cloned into `build_cache/`.
 ///
 /// # Errors
 ///
@@ -71,6 +73,8 @@ pub fn list_all_modules(root: &Path) -> anyhow::Result<Vec<BuiltinModule>> {
       list.push(module);
     }
   }
+
+  list.sort_by(|left, right| left.name.cmp(&right.name));
 
   Ok(list)
 }
@@ -124,11 +128,11 @@ pub fn select_modules(
 
 /// Generates the files that wire the given modules into the workspace.
 ///
-/// Writes the `builtin` manifest (rewriting the `# AUTOGEN DEP ... #` markers
+/// Writes the `waybill` manifest (rewriting the `# AUTOGEN DEP ... #` markers
 /// with non-optional path dependencies) and the
-/// `builtin/assets/registry.txt` module registry read by the
-/// `module_register!` proc macro. The `[features]` section of the manifest is
-/// never touched.
+/// `waybill/src/builtin/modules.rs` module table read by the `waybill`
+/// composition root. The `[features]` section of the manifest is never
+/// touched.
 ///
 /// Passing an empty `modules` slice is a no-op: use [`clean_files`] to reset
 /// the artifacts to their empty state.
@@ -145,26 +149,26 @@ pub fn generate_files(
 
   let paths = generated_paths(root);
 
-  let builtin_manifest = fs::read_to_string(&paths.builtin_manifest)?;
+  let waybill_manifest = fs::read_to_string(&paths.waybill_manifest)?;
 
-  let builtin_dep: Vec<String> = modules
+  let waybill_dep: Vec<String> = modules
     .iter()
     .map(|module| {
       format!("{} = {{ path = \"{}\" }}", module.name, dep_path(root, module))
     })
     .collect();
-  let registry: Vec<String> = modules.iter().map(registry_entry).collect();
+  let modules = render_modules(modules);
 
-  let builtin_manifest =
-    replace_with_marker("DEP", &builtin_manifest, &builtin_dep.join("\n"));
+  let waybill_manifest =
+    replace_with_marker("DEP", &waybill_manifest, &waybill_dep.join("\n"));
 
-  write_generated(&paths, registry.join("\n"), builtin_manifest)
+  write_generated(&paths, modules, waybill_manifest)
 }
 
 /// Resets all generated artifacts to their empty, module-free state.
 ///
 /// Rewrites the `# AUTOGEN DEP ... #` markers with an empty block and writes
-/// the empty module registry.
+/// an empty module table.
 ///
 /// # Errors
 ///
@@ -172,23 +176,24 @@ pub fn generate_files(
 pub fn clean_files(root: &Path) -> anyhow::Result<()> {
   let paths = generated_paths(root);
 
-  let builtin_manifest = fs::read_to_string(&paths.builtin_manifest)?;
-  let builtin_manifest = replace_with_marker("DEP", &builtin_manifest, "");
+  let waybill_manifest = fs::read_to_string(&paths.waybill_manifest)?;
+  let waybill_manifest = replace_with_marker("DEP", &waybill_manifest, "");
 
-  write_generated(&paths, String::new(), builtin_manifest)
+  write_generated(&paths, render_modules(&[]), waybill_manifest)
 }
 
-/// Writes the generated manifest and registry asset.
+/// Writes the generated manifest and module table.
 fn write_generated(
-  paths: &GeneratedPaths, registry: String, builtin_manifest: String,
+  paths: &GeneratedPaths, modules: String, waybill_manifest: String,
 ) -> anyhow::Result<()> {
-  write_generated_file(&paths.builtin_manifest, &builtin_manifest)?;
-  info!("WRITE {}", paths.builtin_manifest.display());
+  write_generated_file(&paths.waybill_manifest, &waybill_manifest)?;
+  info!("WRITE {}", paths.waybill_manifest.display());
 
-  let assets = paths.builtin_manifest.parent().unwrap().join("assets");
-  fs::create_dir_all(&assets)?;
-  write_generated_file(&paths.registry, &registry)?;
-  info!("WRITE {}", paths.registry.display());
+  if let Some(parent) = paths.modules.parent() {
+    fs::create_dir_all(parent)?;
+  }
+  write_generated_file(&paths.modules, &modules)?;
+  info!("WRITE {}", paths.modules.display());
 
   Ok(())
 }
@@ -202,12 +207,11 @@ fn write_generated_file(path: &Path, content: &str) -> anyhow::Result<()> {
   Ok(())
 }
 
-/// Parses a manifest that declares an extension-managed built-in.
+/// Parses a builtin module manifest.
 ///
-/// Logs an error and returns `None` when the manifest is missing, malformed,
-/// or does not carry a `[package.metadata.extension]` section. The section
-/// itself may be empty: a module without a `provider` is discovered like any
-/// other and simply carries no provider entries.
+/// Every directory under `builtins/` is a module; the manifest only needs a
+/// `[package].name`. Logs an error and returns `None` when the manifest is
+/// missing or malformed.
 fn parse_manifest(
   toml_path: &Path, crate_path: &Path, subject: &Path,
 ) -> Option<BuiltinModule> {
@@ -219,7 +223,7 @@ fn parse_manifest(
     },
   };
 
-  let manifest: ExtensionManifest = match toml::from_str(&content) {
+  let manifest: ModuleManifest = match toml::from_str(&content) {
     Ok(manifest) => manifest,
     Err(error) => {
       error!("Failed to decode {}: {}", toml_path.display(), error);
@@ -227,22 +231,13 @@ fn parse_manifest(
     },
   };
 
-  let Some(extension) = manifest.package.metadata.and_then(|m| m.extension)
-  else {
-    error!(
-      "{} has no `[package.metadata.extension]` section",
-      subject.display()
-    );
+  if manifest.package.name.is_empty() {
+    error!("{} has an empty package name", subject.display());
     return None;
-  };
+  }
 
   Some(BuiltinModule {
     name: manifest.package.name,
-    provider: extension.provider,
-    description: extension
-      .description
-      .unwrap_or(manifest.package.description.unwrap_or_default()),
-    version: manifest.package.version.unwrap_or_else(|| "0.0.0".to_string()),
     path: crate_path.to_path_buf(),
   })
 }
@@ -319,7 +314,7 @@ fn replace_with_marker(marker: &str, content: &str, new: &str) -> String {
   out
 }
 
-/// Renders the dependency path of a module relative to the `builtin` crate,
+/// Renders the dependency path of a module relative to the `waybill` crate,
 /// e.g. `../builtins/echo`.
 ///
 /// Modules that live outside the project's `builtins` directory (e.g. cloned
@@ -335,44 +330,57 @@ fn dep_path(root: &Path, module: &BuiltinModule) -> String {
   }
 }
 
-/// Renders one module registry entry, e.g.
+/// Renders the `waybill/src/builtin/modules.rs` table for the selection.
+///
+/// The output calls every selected module's entry function, e.g.
 ///
 /// ```text
-/// echo: {
-///   version => "0.1.0",
-///   description => "Echo protocol",
-///   provider => echo::EchoProvider as stream,
-/// };
-/// ```
+/// use depot::Depot;
+/// use extension::Registry;
 ///
-/// The `provider` line is omitted for modules that declare no provider.
-fn registry_entry(module: &BuiltinModule) -> String {
-  let mut entry = format!(
-    "{}: {{\n  version => \"{}\",\n  description => \"{}\"",
-    module.name, module.version, module.description
+/// pub(crate) fn register_all(registry: &mut Registry<Depot>) {
+///   echo::builtin_module_entry(registry);
+/// }
+/// ```
+fn render_modules(modules: &[BuiltinModule]) -> String {
+  let mut source = String::from(
+    "//! Builtin module table.\n\
+     //!\n\
+     //! Generated by `xtask` from the directories under `builtins/`.\n\
+     //! DO NOT EDIT.\n\
+     \n\
+     use depot::Depot;\n\
+     use extension::builtin::Registry;\n\
+     \n",
   );
 
-  if let Some(provider) = provider_path(module) {
-    entry.push_str(&format!(",\n  provider => {provider}"));
+  if modules.is_empty() {
+    source.push_str(
+      "/// Installs every builtin module compiled into this binary.\n\
+       pub(crate) fn register_all(_registry: &mut Registry<Depot>) {}\n",
+    );
+    return source;
   }
 
-  entry.push_str(",\n};");
-  entry
+  source.push_str(
+    "/// Installs every builtin module compiled into this binary.\n\
+     pub(crate) fn register_all(registry: &mut Registry<Depot>) {\n",
+  );
+  for module in modules {
+    source.push_str(&format!(
+      "  {}::builtin_module_entry(registry);\n",
+      crate_name(module)
+    ));
+  }
+  source.push_str("}\n");
+
+  source
 }
 
-/// Renders the full provider path, prefixing the crate name unless the
-/// metadata already carries it, e.g. `echo::EchoProvider as stream`.
-///
-/// Returns `None` for a module that declares no provider.
-fn provider_path(module: &BuiltinModule) -> Option<String> {
-  let provider = module.provider.as_ref()?;
-
-  let prefix = format!("{}::", module.name);
-  if provider.starts_with(&prefix) {
-    Some(provider.clone())
-  } else {
-    Some(format!("{prefix}{provider}"))
-  }
+/// Returns the Rust crate name of a module, e.g. `my_module` for the package
+/// `my-module`.
+fn crate_name(module: &BuiltinModule) -> String {
+  module.name.replace('-', "_")
 }
 
 /// Converts a path to its POSIX-style string representation.
@@ -425,121 +433,72 @@ tokio.workspace = true
   fn module(name: &str) -> BuiltinModule {
     BuiltinModule {
       name: name.to_string(),
-      provider: Some("EchoProvider as stream".to_string()),
-      description: "Echo protocol".to_string(),
-      version: "0.1.0".to_string(),
       path: PathBuf::from("builtins").join(name),
     }
   }
 
   #[test]
-  fn registry_entry_renders_version_description_and_provider() {
-    let expected = "echo: {\n  version => \"0.1.0\",\n  description => \"Echo protocol\",\n  provider => echo::EchoProvider as stream,\n};";
-    assert_eq!(registry_entry(&module("echo")), expected);
+  fn render_modules_calls_each_entry() {
+    let source = render_modules(&[module("echo"), module("echo_udp")]);
+
+    assert!(source.contains("use depot::Depot;"));
+    assert!(source.contains("use extension::Registry;"));
+    assert!(source.contains(
+      "pub(crate) fn register_all(registry: &mut Registry<Depot>) {"
+    ));
+    assert!(source.contains("echo::builtin_module_entry(registry);"));
+    assert!(source.contains("echo_udp::builtin_module_entry(registry);"));
   }
 
   #[test]
-  fn registry_entry_omits_the_provider_line_without_a_provider() {
-    let mut module = module("http");
-    module.provider = None;
+  fn render_modules_is_empty_without_modules() {
+    let source = render_modules(&[]);
 
-    assert_eq!(
-      registry_entry(&module),
-      "http: {\n  version => \"0.1.0\",\n  description => \"Echo protocol\",\n};"
-    );
+    assert!(source.contains(
+      "pub(crate) fn register_all(_registry: &mut Registry<Depot>) {}"
+    ));
   }
 
   #[test]
-  fn provider_path_prefixes_the_crate_name() {
-    assert_eq!(
-      provider_path(&module("echo")).as_deref(),
-      Some("echo::EchoProvider as stream")
-    );
+  fn crate_name_replaces_hyphens() {
+    assert_eq!(crate_name(&module("my-module")), "my_module");
   }
 
   #[test]
-  fn provider_path_keeps_an_existing_crate_prefix() {
-    let mut module = module("echo");
-    module.provider = Some("echo::EchoProvider as datagram".to_string());
-    assert_eq!(
-      provider_path(&module).as_deref(),
-      Some("echo::EchoProvider as datagram")
-    );
-  }
-
-  #[test]
-  fn provider_path_is_none_without_a_provider() {
-    let mut module = module("http");
-    module.provider = None;
-
-    assert_eq!(provider_path(&module), None);
-  }
-
-  #[test]
-  fn parse_manifest_accepts_an_extension_section_without_provider() {
-    let dir = temp_dir("no-provider");
+  fn parse_manifest_accepts_a_plain_package() {
+    let dir = temp_dir("plain");
     let manifest = dir.join("Cargo.toml");
     fs::write(
       &manifest,
-      "[package]\nname = \"http\"\nversion = \"0.1.0\"\n\
-       description = \"HTTP builtin\"\n\n[package.metadata.extension]\n",
+      "[package]\nname = \"echo\"\nversion = \"0.1.0\"\n\
+       description = \"Echo builtins\"\n",
     )
     .unwrap();
 
     let module = parse_manifest(&manifest, &dir, &manifest).unwrap();
 
-    assert_eq!(module.name, "http");
-    assert_eq!(module.provider, None);
-    assert_eq!(module.description, "HTTP builtin");
-    assert_eq!(module.version, "0.1.0");
+    assert_eq!(module.name, "echo");
+    assert_eq!(&module.path, &dir);
 
     fs::remove_dir_all(&dir).unwrap();
   }
 
   #[test]
-  fn parse_manifest_reads_the_provider_from_an_extension_section() {
-    let dir = temp_dir("with-provider");
+  fn parse_manifest_rejects_a_manifest_without_a_package_name() {
+    let dir = temp_dir("no-name");
     let manifest = dir.join("Cargo.toml");
-    fs::write(
-      &manifest,
-      "[package]\nname = \"echo_udp\"\nversion = \"0.1.0\"\n\n\
-       [package.metadata.extension]\nprovider = \"EchoProvider as datagram\"\n",
-    )
-    .unwrap();
-
-    let module = parse_manifest(&manifest, &dir, &manifest).unwrap();
-
-    assert_eq!(module.provider.as_deref(), Some("EchoProvider as datagram"));
-
-    fs::remove_dir_all(&dir).unwrap();
-  }
-
-  #[test]
-  fn parse_manifest_accepts_the_legacy_carrier_section() {
-    let dir = temp_dir("legacy-carrier");
-    let manifest = dir.join("Cargo.toml");
-    fs::write(
-      &manifest,
-      "[package]\nname = \"echo\"\nversion = \"0.1.0\"\n\n\
-       [package.metadata.carrier]\nprovider = \"EchoProvider as stream\"\n",
-    )
-    .unwrap();
-
-    let module = parse_manifest(&manifest, &dir, &manifest).unwrap();
-
-    assert_eq!(module.provider.as_deref(), Some("EchoProvider as stream"));
-
-    fs::remove_dir_all(&dir).unwrap();
-  }
-
-  #[test]
-  fn parse_manifest_rejects_a_crate_without_extension_metadata() {
-    let dir = temp_dir("no-metadata");
-    let manifest = dir.join("Cargo.toml");
-    fs::write(&manifest, "[package]\nname = \"plain\"\nversion = \"0.1.0\"\n")
-      .unwrap();
+    fs::write(&manifest, "[package]\nversion = \"0.1.0\"\n").unwrap();
 
     assert!(parse_manifest(&manifest, &dir, &manifest).is_none());
+
+    fs::remove_dir_all(&dir).unwrap();
+  }
+
+  #[test]
+  fn parse_manifest_rejects_a_missing_manifest() {
+    let dir = temp_dir("missing");
+
+    assert!(parse_manifest(&dir.join("Cargo.toml"), &dir, &dir).is_none());
 
     fs::remove_dir_all(&dir).unwrap();
   }

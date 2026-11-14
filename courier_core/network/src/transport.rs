@@ -6,6 +6,8 @@ use std::{io::Result, net::SocketAddr};
 use crate::stream::{ReadHalf, Stream, WriteHalf};
 
 pub trait Transport: Send + Sync + Sized + 'static {
+  const NAME: &'static str;
+
   fn bind(addr: SocketAddr) -> Result<Self>;
 
   #[cfg(not(windows))]

@@ -1,158 +1,132 @@
+//! Provider definitions and the capabilities bound to a
+//! [`Depot`](crate::Depot).
+//!
+//! A builtin module declares the transport and protocol it serves by
+//! implementing [`StreamProvider`] or [`DatagramProvider`]. The capability
+//! abstraction itself lives in `extension`; this module is the bridge that
+//! fixes its runtime type to [`Depot`](crate::Depot).
+
+use std::{io, net::SocketAddr};
+
+use extension::builtin::capability::*;
 use network::transport::{DatagramTransport, StreamTransport};
 use protocol::{Protocol, datagram::DatagramProtocol, stream::StreamProtocol};
 
-/// The parts a stream (e.g. TCP) builtin module provides.
-///
-/// A module implements this trait by declaring the transport its protocol
-/// runs over and supplying the protocol instance plus the middleware
-/// pipeline. Everything else — binding the transport, building the
-/// logger and event bus from the [`Config`], assembling the [`Depot`](crate::Depot) and
-/// entering the accept loop — is owned by the framework's default
-/// [`serve`](Self::serve) implementation.
+use crate::Depot;
+
+/// The transport and protocol a stream builtin module provides.
 ///
 /// # Examples
 ///
-/// ```rust,no_run
+/// ```rust
 /// use depot::StreamProvider;
 ///
-/// /// Zero-sized parts; the pipeline is built on demand.
-/// #[derive(Default, Clone)]
-/// struct MyParts;
-///
-/// impl StreamProvider for MyParts {
-///   type Transport = network::transport::tcp::TcpTransport;
-///   type Protocol = MyProtocol;
-///
-///   fn protocol(&self) -> Self::Protocol {
-///     MyProtocol
-///   }
-///
-///   fn pipeline(
-///     &self,
-///   ) -> relay::Pipeline<impl relay::Middleware<MyRequest, Response = MyResponse>> {
-///     relay::Builder::default()
-///       .then(|request: MyRequest| MyResponse(request.0))
-///       .build()
-///   }
+/// fn transport<P: StreamProvider>() -> std::any::TypeId {
+///   std::any::TypeId::of::<<P as StreamProvider>::Transport>()
 /// }
-///
-/// # #[derive(Clone)] struct MyProtocol;
-/// # impl protocol::Protocol for MyProtocol {
-/// #   type Error = std::convert::Infallible;
-/// #   type Request = MyRequest;
-/// #   type Response = MyResponse;
-/// #   fn name() -> &'static str { "protocol:my" }
-/// #   fn version() -> &'static str { "0.1.0" }
-/// # }
-/// # impl protocol::StreamProtocol<network::transport::tcp::TcpTransport> for MyProtocol {
-/// #   async fn decode(
-/// #     &self,
-/// #     read_half: &mut <network::transport::tcp::TcpTransport as network::transport::StreamTransport>::ReadHalf,
-/// #   ) -> Result<Self::Request, Self::Error> {
-/// #     Ok(MyRequest(String::new()))
-/// #   }
-/// #   async fn encode(
-/// #     &self,
-/// #     response: Self::Response,
-/// #   ) -> Result<(network::Frame, network::KeepAlive), Self::Error> {
-/// #     Ok((network::Frame::from_owner(response.0), network::KeepAlive::Keep))
-/// #   }
-/// # }
-/// # struct MyRequest(pub String);
-/// # struct MyResponse(pub String);
-/// # use std::sync::Arc;
-/// # use tokio_util::sync::CancellationToken;
-/// # let config = depot::config::Config::default();
-/// # tokio_test::block_on(async {
-/// # let _ = MyParts
-/// #   .serve(&config, Arc::new(CancellationToken::new()))
-/// #   .await;
-/// # });
 /// ```
 pub trait StreamProvider: Sized {
-  /// The stream transport this protocol requires (e.g. `TcpTransport`).
+  /// The stream transport this provider requires, e.g. `TcpTransport`.
   type Transport: StreamTransport;
 
   /// The protocol, which must run over [`Self::Transport`].
-  type Protocol: Protocol + StreamProtocol + Clone;
+  type Protocol: Protocol + StreamProtocol;
 
-  /// Returns the protocol instance.
   fn protocol() -> Self::Protocol;
 }
 
-/// The parts a datagram (e.g. UDP) builtin module provides.
+/// The transport and protocol a datagram builtin module provides.
 ///
-/// A module implements this trait by declaring the transport its protocol
-/// runs over and supplying the protocol instance plus the middleware
-/// pipeline. Everything else — binding the transport, building the
-/// logger and event bus from the [`Config`](crate::config::Config), assembling the [`Depot`](crate::Depot) and
-/// entering the accept loop — is owned by the framework's default implementation.
+/// # Examples
+///
+/// ```rust
+/// use depot::DatagramProvider;
+///
+/// fn transport<P: DatagramProvider>() -> std::any::TypeId {
+///   std::any::TypeId::of::<<P as DatagramProvider>::Transport>()
+/// }
+/// ```
+pub trait DatagramProvider: Sized {
+  /// The datagram transport this provider requires, e.g. `UdpTransport`.
+  type Transport: DatagramTransport;
+
+  /// The protocol, which must run over [`Self::Transport`].
+  type Protocol: Protocol + DatagramProtocol;
+
+  fn protocol() -> Self::Protocol;
+}
+
+/// Creates a stream provider capability served by [`Depot`].
 ///
 /// # Examples
 ///
 /// ```rust,no_run
-/// use depot::DatagramProvider;
-///
-/// /// Zero-sized parts; the pipeline is built on demand.
-/// #[derive(Default, Clone)]
-/// struct MyParts;
-///
-/// impl DatagramProvider for MyParts {
-///   type Transport = network::transport::udp::UdpTransport;
-///   type Protocol = MyProtocol;
-///
-///   fn protocol(&self) -> Self::Protocol {
-///     MyProtocol
-///   }
-///
-///   fn pipeline(
-///     &self,
-///   ) -> relay::Pipeline<impl relay::Middleware<MyRequest, Response = MyResponse>> {
-///     relay::Builder::default()
-///       .then(|request: MyRequest| MyResponse(request.0))
-///       .build()
-///   }
-/// }
-///
-/// # #[derive(Clone)] struct MyProtocol;
-/// # impl protocol::Protocol for MyProtocol {
-/// #   type Error = std::convert::Infallible;
-/// #   type Request = MyRequest;
-/// #   type Response = MyResponse;
-/// #   fn name() -> &'static str { "protocol:my" }
-/// #   fn version() -> &'static str { "0.1.0" }
+/// use depot::provider;
+/// # use network::transport::tcp::TcpTransport;
+/// # use protocol::{Protocol, stream::StreamProtocol};
+/// # struct Demo;
+/// # impl Protocol for Demo {
+/// #   type Command = ();
+/// #   type Error = std::io::Error;
+/// #   const NAME: &'static str = "demo";
+/// #   fn create() -> Self { Self }
 /// # }
-/// # impl protocol::DatagramProtocol<network::transport::udp::UdpTransport> for MyProtocol {
-/// #   async fn decode(
-/// #     &self, data: &[u8]
-/// #   ) -> Result<Self::Request, Self::Error> {
-/// #     Ok(MyRequest(String::new()))
-/// #   }
-/// #   async fn encode(
-/// #     &self,
-/// #     response: Self::Response,
-/// #   ) -> Result<network::Frame, Self::Error> {
-/// #     Ok(network::Frame::from_owner(response.0))
-/// #   }
+/// # impl StreamProtocol for Demo {
+/// #   fn step(
+/// #     &mut self, _: &mut protocol::stream::Context<'_>,
+/// #     _: protocol::stream::Input<()>,
+/// #   ) -> Result<(), Self::Error> { Ok(()) }
 /// # }
-/// # struct MyRequest(pub String);
-/// # struct MyResponse(pub String);
-/// # use std::sync::Arc;
-/// # use tokio_util::sync::CancellationToken;
-/// # let config = depot::config::Config::default();
-/// # tokio_test::block_on(async {
-/// # let _ = MyParts
-/// #   .serve(&config, Arc::new(CancellationToken::new()))
-/// #   .await;
-/// # });
+/// # struct DemoProvider;
+/// # impl depot::StreamProvider for DemoProvider {
+/// #   type Transport = TcpTransport;
+/// #   type Protocol = Demo;
+/// # }
+/// let capability = provider::stream::<DemoProvider>();
 /// ```
-pub trait DatagramProvider: Sized {
-  /// The stream transport this protocol requires.
-  type Transport: DatagramTransport;
+pub fn stream<P: StreamProvider>() -> Provider<Depot> {
+  fn install<P: StreamProvider>(
+    depot: &mut Depot, address: SocketAddr,
+  ) -> io::Result<()> {
+    depot.run_stream::<P>(address)
+  }
 
-  /// The protocol, which must run over [`Self::Transport`].
-  type Protocol: Protocol + DatagramProtocol + Clone;
+  Provider::new(install::<P>)
+}
 
-  /// Returns the protocol instance.
-  fn protocol() -> Self::Protocol;
+/// Creates a datagram provider capability served by [`Depot`].
+///
+/// # Examples
+///
+/// ```rust,no_run
+/// use depot::provider;
+/// # use network::transport::udp::UdpTransport;
+/// # use protocol::{Protocol, datagram::{Context, DatagramProtocol, Input}};
+/// # struct Demo;
+/// # impl Protocol for Demo {
+/// #   type Command = ();
+/// #   type Error = std::io::Error;
+/// #   const NAME: &'static str = "demo";
+/// #   fn create() -> Self { Self }
+/// # }
+/// # impl DatagramProtocol for Demo {
+/// #   fn step(
+/// #     &mut self, _: &mut Context<'_>, _: Input<()>,
+/// #   ) -> Result<(), Self::Error> { Ok(()) }
+/// # }
+/// # struct DemoProvider;
+/// # impl depot::DatagramProvider for DemoProvider {
+/// #   type Transport = UdpTransport;
+/// #   type Protocol = Demo;
+/// # }
+/// let capability = provider::datagram::<DemoProvider>();
+/// ```
+pub fn datagram<P: DatagramProvider>() -> Provider<Depot> {
+  fn install<P: DatagramProvider>(
+    depot: &mut Depot, address: SocketAddr,
+  ) -> io::Result<()> {
+    depot.run_datagram::<P>(address)
+  }
+
+  Provider::new(install::<P>)
 }

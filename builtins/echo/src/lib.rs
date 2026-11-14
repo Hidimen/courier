@@ -1,8 +1,9 @@
-use depot::{self, StreamProvider};
-use network::{
-  transport::tcp::TcpTransport,
-};
-use protocol::{Payload, Protocol, stream::*};
+use std::net::SocketAddr;
+
+use depot::{DatagramProvider, Depot, provider::StreamProvider};
+use extension::builtin::{Module, Registry};
+use network::transport::{tcp::TcpTransport, udp::UdpTransport};
+use protocol::{Payload, Protocol, stream, datagram};
 use thiserror::Error;
 
 /// Error type for the echo protocol.
@@ -13,59 +14,113 @@ pub enum EchoError {
   IOError(#[from] std::io::Error),
 }
 
-/// The echo protocol.
+/// The echo protocol in `stream` mode.
 #[derive(Clone)]
-pub struct EchoProtocol {
-  buf: Vec<Payload>
+pub struct EchoStreamProtocol {
+  buf: Vec<Payload>,
 }
 
-/// A request carrying the received bytes as a string.
-pub struct Request(pub Vec<u8>);
-
-/// A response carrying the request payload back to the peer.
-pub struct Response(pub Vec<u8>);
-
-impl Protocol for EchoProtocol {
+impl Protocol for EchoStreamProtocol {
   type Error = EchoError;
   type Command = ();
-  
+
   const NAME: &'static str = "courier:echo";
 }
 
-impl StreamProtocol for EchoProtocol {
+impl stream::StreamProtocol for EchoStreamProtocol {
   fn step(
-      &mut self, ctx: &mut Context<'_>, input: Input<Self::Command>,
-    ) -> Result<(), Self::Error>
-  {
+    &mut self, ctx: &mut stream::Context<'_>, input: stream::Input<Self::Command>,
+  ) -> Result<(), Self::Error> {
     match input {
-      Input::Opened => Ok(()),
-      Input::Closed(_) => Ok(()),
-      Input::Data(bytes) => {
+      stream::Input::Opened => Ok(()),
+      stream::Input::Closed(_) => Ok(()),
+      stream::Input::Data(bytes) => {
         if let Err(payload) = ctx.write_bytes(bytes) {
           self.buf.push(payload);
           Ok(())
-        }else {
+        } else {
           Ok(())
         }
       },
-      Input::Command(_) => Ok(()),
-      Input::Timer(_) => Ok(())
+      stream::Input::Command(_) => Ok(()),
+      stream::Input::Timer(_) => Ok(()),
     }
   }
 }
 
-/// The echo builtin parts: a protocol plus a middleware pipeline.
+/// The echo protocol in `datagram` mode.
+#[derive(Clone)]
+pub struct EchoDatagramProtocol {
+  buf: Vec<(SocketAddr, Payload)>,
+}
+
+impl Protocol for EchoDatagramProtocol {
+  type Error = EchoError;
+  type Command = ();
+
+  const NAME: &'static str = "courier:echo_datagram";
+}
+
+impl datagram::DatagramProtocol for EchoDatagramProtocol {
+  fn step(
+    &mut self, ctx: &mut datagram::Context<'_>, input: datagram::Input<Self::Command>,
+  ) -> Result<(), Self::Error> {
+    match input {
+      datagram::Input::Opened => Ok(()),
+      datagram::Input::Closed(_) => Ok(()),
+      datagram::Input::Message { peer, payload } => {
+        if let Err(payload) = ctx.write_bytes(peer, payload) {
+          self.buf.push(payload);
+          Ok(())
+        } else {
+          Ok(())
+        }
+      },
+      datagram::Input::Command(_) => Ok(()),
+      datagram::Input::Timer(_) => Ok(()),
+    }
+  }
+}
+
+/// The echo stream provider.
 ///
-/// The transport, logger and event bus are created by the framework from
-/// the server [`Config`](depot::config::Config); this type only declares
-/// the transport its protocol runs over and supplies the pipeline.
+/// The transport is created by the framework from the configured listen
+/// address; this type only declares the transport its protocol runs over.
 pub struct EchoProvider;
 
 impl StreamProvider for EchoProvider {
   type Transport = TcpTransport;
-  type Protocol = EchoProtocol;
+  type Protocol = EchoStreamProtocol;
 
   fn protocol() -> Self::Protocol {
-    EchoProtocol { buf: Vec::new() }
+    Self::Protocol {
+      buf: Vec::new()
+    }
   }
+}
+
+impl DatagramProvider for EchoProvider {
+  type Transport = UdpTransport;
+  type Protocol = EchoDatagramProtocol;
+
+  fn protocol() -> Self::Protocol {
+    Self::Protocol {
+      buf: Vec::new()
+    }
+  }
+}
+
+/// The TCP echo builtin module.
+pub struct Echo;
+
+pub fn builtin_module_entry(registry: &mut Registry<Depot>) {
+  registry.register(
+    Module::new(
+      env!("CARGO_PKG_NAME"),
+      env!("CARGO_PKG_VERSION"),
+      env!("CARGO_PKG_DESCRIPTION"),
+    )
+    .stream_provider(depot::provider::stream::<EchoProvider>())
+    .datagram_provider(depot::provider::datagram::<EchoProvider>()),
+  );
 }

@@ -7,6 +7,10 @@ output
 build/target
 .courier
 
+# AI folders
+.dsh-progress
+.trae
+
 # Test Report
 coverage_output
 

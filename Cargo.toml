@@ -1,5 +1,5 @@
 [workspace]
-members = ["builtin", "courier_core/*", "macros/*", "waybill", "xtask"]
+members = ["courier_core/*", "waybill", "xtask"]
 resolver = "3"
 
 [workspace.package]

@@ -21,9 +21,9 @@ pub fn handle(args: VersionArgs) -> anyhow::Result<()> {
 
   if args.show_builtins {
     println!();
-    println!("All installed builtin modules:");
-    for module in builtin::get_all_builtins() {
-      println!("{}", module);
+    println!("All registered builtin modules:");
+    for module in crate::builtin::registry().iter() {
+      println!("{module}");
     }
   }
 

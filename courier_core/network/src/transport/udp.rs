@@ -8,6 +8,8 @@ use crate::transport::{DatagramTransport, Transport};
 pub struct UdpTransport(tokio::net::UdpSocket);
 
 impl Transport for UdpTransport {
+  const NAME: &'static str = "courier:udp";
+
   fn bind(addr: SocketAddr) -> Result<Self> {
     /*
       To avoid Tokio panic, set_nonblocking is necessary.

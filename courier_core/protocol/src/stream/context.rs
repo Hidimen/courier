@@ -30,11 +30,6 @@ impl<'a> Context<'a> {
 
   /// Write bytes into `buffer`.
   ///
-  /// When this method called, whole data from `copy buffer` operated by
-  /// method [`write`](Self::write) will pushed into
-  /// `buffer`, and then `bytes` pushed into `buffer`
-  /// (if space is enough).
-  ///
   /// # Returns
   /// `Ok(())` means all data is written.
   /// `Err(Payload)` means data is refused due to `len` is

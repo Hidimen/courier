@@ -9,8 +9,8 @@
 //!
 //! - [`register`] discovers the built-in modules under `builtins/` and
 //!   generates the artifacts that wire the selected ones into the workspace:
-//!   `builtin/Cargo.toml` (the `# AUTOGEN DEP #` section) and
-//!   `builtin/assets/registry.txt` (read by the `module_register!` proc macro);
+//!   `waybill/Cargo.toml` (the `# AUTOGEN DEP #` section) and
+//!   `waybill/src/builtin/modules.rs` (the generated module table);
 //! - [`git_cloner`] clones git placeholder modules into `build_cache/`;
 //! - [`commands`] orchestrates `build`, `run`, `clean` and `generate`.
 //!

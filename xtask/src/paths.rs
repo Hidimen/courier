@@ -26,15 +26,14 @@ pub fn builtins_path(root: &Path) -> PathBuf {
   root.join("builtins")
 }
 
-/// Returns the path of the `builtin` crate manifest.
-pub fn builtin_manifest_path(root: &Path) -> PathBuf {
-  root.join("builtin").join("Cargo.toml")
+/// Returns the path of the `waybill` crate manifest.
+pub fn waybill_manifest_path(root: &Path) -> PathBuf {
+  root.join("waybill").join("Cargo.toml")
 }
 
-/// Returns the path of the generated module registry asset of the `builtin`
-/// crate, consumed by the `module_register!` proc macro.
-pub fn registry_asset_path(root: &Path) -> PathBuf {
-  root.join("builtin").join("assets").join("registry.txt")
+/// Returns the path of the generated module table of the `waybill` crate.
+pub fn modules_source_path(root: &Path) -> PathBuf {
+  root.join("waybill").join("src").join("builtin").join("modules.rs")
 }
 
 /// Returns the `target` directory of the project.
