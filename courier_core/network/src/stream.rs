@@ -2,13 +2,9 @@ use std::{
   io::{Error, ErrorKind, Result},
   net::SocketAddr,
   task::{Context, Poll},
-  task::{Context, Poll},
 };
 
 pub trait Stream: Send + Sync + 'static {
-  type ReadHalf: ReadHalf + Send + Sync + 'static;
-  type WriteHalf: WriteHalf + Send + Sync + 'static;
-
   type ReadHalf: ReadHalf + Send + Sync + 'static;
   type WriteHalf: WriteHalf + Send + Sync + 'static;
 

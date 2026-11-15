@@ -5,7 +5,6 @@ use marquage::{Generate, Parse};
 /// Top-level configuration for a server instance.
 #[derive(Debug, Parse, Generate)]
 pub struct Config {
-pub struct Config {
   /// Name of the provider which provides boot arguments.
   #[marquage(default)]
   pub provider: Option<String>,

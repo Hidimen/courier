@@ -16,10 +16,6 @@ pub enum Commands {
   #[cfg(debug_assertions)]
   /// Run specific test sets.
   Test(test::TestArgs),
-  /// Ping the running instance.
-  Ping(ping::PingArgs),
-  /// List current pods.
-  List(list::ListArgs),
 }
 
 impl Commands {
