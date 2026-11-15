@@ -21,15 +21,15 @@ use crate::{HandlingKind, Level, Record, flow::Flow};
 /// # Example
 ///
 /// ```rust,no_run
-/// use logger::{Builder, Level, Logger};
+/// use logger::{Builder, Level, Record};
 /// use logger::flows::FileFlow;
 ///
-/// let logger = Logger::new(
-///   128,
-///   FileFlow::new(Level::Info, "app.log"),
-///   |_record: &logger::Record, _timestamp: &str, _out: &mut String| Ok(()),
-/// );
-/// logger.info("Hello file!".into(), "demo");
+/// let logger = Builder::new()
+///   .capacity(128)
+///   .add_flow(FileFlow::new(Level::Info, "app.log"))
+///   .build_local();
+///
+/// logger.log(Record::new(Level::Info, "demo", "Hello file!"));
 /// drop(logger); // flushes and closes
 /// ```
 pub struct FileFlow {
@@ -80,6 +80,6 @@ impl Flow for FileFlow {
   }
 
   fn name(&self) -> &'static str {
-    "file"
+    "courier:file"
   }
 }

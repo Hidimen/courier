@@ -3,8 +3,9 @@ use crate::{HandlingKind, Level, record::Record};
 /// A destination for log records.
 ///
 /// Implement this trait to create custom log outputs (file, console, network,
-/// etc.). Flows can be composed with [`Stack`] so that a single record is
-/// dispatched to multiple destinations.
+/// etc.). Flows are composed with [`Stack`] so that a single record is
+/// dispatched to multiple destinations **at compile time**; the composition
+/// lives in the type system and cannot be changed at run time.
 ///
 /// # Required methods
 ///
@@ -28,31 +29,36 @@ use crate::{HandlingKind, Level, record::Record};
 /// [`can_log`](Flow::can_log) method). Records without a target are processed
 /// by every flow whose level filter passes.
 ///
-/// # Example
+/// # Examples
 ///
 /// ```rust
 /// use logger::flow::Flow;
 /// use logger::{HandlingKind, Level, Record};
 ///
-/// struct MyFlow { min_level: Level }
+/// struct MyFlow {
+///   min_level: Level,
+/// }
 ///
 /// impl Flow for MyFlow {
-///     fn println(&mut self, _record: &Record, line: &str) -> Result<(), HandlingKind> {
-///         // `line` is the fully rendered output; write it wherever this flow sinks.
-///         Ok(())
-///     }
+///   fn println(
+///     &mut self, _record: &Record, line: &str,
+///   ) -> Result<(), HandlingKind> {
+///     // `line` is the fully rendered output; write it wherever this flow sinks.
+///     let _ = line;
+///     Ok(())
+///   }
 ///
-///     fn flush(&mut self) -> Result<(), HandlingKind> {
-///         Ok(())
-///     }
+///   fn flush(&mut self) -> Result<(), HandlingKind> {
+///     Ok(())
+///   }
 ///
-///     fn level(&self) -> Level {
-///         self.min_level
-///     }
+///   fn level(&self) -> Level {
+///     self.min_level
+///   }
 ///
-///     fn name(&self) -> &'static str {
-///         "my_flow"
-///     }
+///   fn name(&self) -> &'static str {
+///     "my_flow"
+///   }
 /// }
 /// ```
 pub trait Flow: Send + 'static {
@@ -139,7 +145,7 @@ impl Flow for Identity {
 /// `Stack` is constructed by [`Builder::add_flow`](crate::Builder::add_flow)
 /// and is typically not instantiated directly.
 ///
-/// # Example
+/// # Examples
 ///
 /// ```rust
 /// use logger::flow::{Flow, Identity, Stack};
@@ -148,20 +154,22 @@ impl Flow for Identity {
 /// // Two structs each implementing Flow (omitted for brevity — see `Flow`).
 /// # struct A(Level, &'static str);
 /// # impl Flow for A {
-/// #  fn println(&mut self, _r: &Record, _h: &str) -> Result<(), HandlingKind> { Ok(()) }
-/// #  fn flush(&mut self) -> Result<(), HandlingKind> { Ok(()) }
-/// #  fn level(&self) -> Level { self.0 }
-/// #  fn name(&self) -> &'static str { self.1 }
+/// #   fn println(&mut self, _r: &Record, _l: &str) -> Result<(), HandlingKind> { Ok(()) }
+/// #   fn flush(&mut self) -> Result<(), HandlingKind> { Ok(()) }
+/// #   fn level(&self) -> Level { self.0 }
+/// #   fn name(&self) -> &'static str { self.1 }
 /// # }
 /// # struct B(Level, &'static str);
 /// # impl Flow for B {
-/// #  fn println(&mut self, _r: &Record, _h: &str) -> Result<(), HandlingKind> { Ok(()) }
-/// #  fn flush(&mut self) -> Result<(), HandlingKind> { Ok(()) }
-/// #  fn level(&self) -> Level { self.0 }
-/// #  fn name(&self) -> &'static str { self.1 }
+/// #   fn println(&mut self, _r: &Record, _l: &str) -> Result<(), HandlingKind> { Ok(()) }
+/// #   fn flush(&mut self) -> Result<(), HandlingKind> { Ok(()) }
+/// #   fn level(&self) -> Level { self.0 }
+/// #   fn name(&self) -> &'static str { self.1 }
 /// # }
-/// let stack: Stack<B, Stack<A, Identity>> =
-///     Stack { inner: B(Level::Trace, "b"), next: Stack { inner: A(Level::Info, "a"), next: Identity } };
+/// let stack: Stack<B, Stack<A, Identity>> = Stack {
+///   inner: B(Level::Trace, "b"),
+///   next: Stack { inner: A(Level::Info, "a"), next: Identity },
+/// };
 /// assert_eq!(stack.name(), "b");
 /// ```
 pub struct Stack<F: Flow, S: Flow> {
@@ -175,19 +183,13 @@ impl<F: Flow, S: Flow> Flow for Stack<F, S> {
   fn println(
     &mut self, record: &Record, line: &str,
   ) -> Result<(), HandlingKind> {
-    // Evaluate each node's filter exactly once, then dispatch to the
-    // accepting subset. `next` processes first, then `inner`, mirroring the
-    // previous value-passing pipeline (where `next` ran before `inner`).
-    let inner_accepts = self.inner.can_log(record);
-    let next_accepts = self.next.can_log(record);
-    match (inner_accepts, next_accepts) {
-      (true, true) => {
-        self.next.println(record, line)?;
-        self.inner.println(record, line)?;
-      },
-      (true, false) => self.inner.println(record, line)?,
-      (false, true) => self.next.println(record, line)?,
-      (false, false) => {},
+    // `next` processes first, then `inner`, preserving the order in which the
+    // flows were added. Each node's filter is evaluated exactly once.
+    if self.next.can_log(record) {
+      self.next.println(record, line)?;
+    }
+    if self.inner.can_log(record) {
+      self.inner.println(record, line)?;
     }
     Ok(())
   }
@@ -216,11 +218,10 @@ impl<F: Flow, S: Flow> Flow for Stack<F, S> {
 
 #[cfg(test)]
 mod tests {
+  use std::borrow::Cow;
+
   use super::*;
   use crate::Level;
-  use bytes::Bytes;
-
-  // ---- Test helpers ----
 
   /// A flow that always accepts logs above its level.
   struct TestFlow {
@@ -261,13 +262,12 @@ mod tests {
     }
   }
 
-  fn make_record(msg: &str, target: Option<&'static str>) -> Record {
+  fn make_record(msg: &'static str, target: Option<&'static str>) -> Record {
     Record {
-      timestamp: 0,
       level: Level::Info,
       target,
       namespace: "test",
-      content: Bytes::from(msg.to_string()),
+      content: Cow::Borrowed(msg),
     }
   }
 
@@ -286,7 +286,7 @@ mod tests {
     let record = make_record("test", None);
     let result = identity.println(&record, "");
     assert!(result.is_ok());
-    assert_eq!(&record.content[..], b"test");
+    assert_eq!(&*record.content, "test");
   }
 
   #[test]
@@ -306,8 +306,7 @@ mod tests {
 
   #[test]
   fn identity_flush_returns_ok() {
-    let mut identity = Identity;
-    assert!(identity.flush().is_ok());
+    assert!(Identity.flush().is_ok());
   }
 
   // ---- Stack tests ----
@@ -350,7 +349,8 @@ mod tests {
   #[test]
   fn stack_only_inner_can_log() {
     let output = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-    // Use a level higher than Info so that the "next" flow rejects Info-level records
+    // Use a level higher than Info so that the "next" flow rejects Info-level
+    // records.
     let inner = TestFlow::new(Level::Trace, "inner", "INNER", output.clone());
     let next = TestFlow::new(Level::Error, "next", "NEXT", output.clone());
     let mut stack = Stack { inner, next };
@@ -391,7 +391,7 @@ mod tests {
 
     let logs = output.lock().unwrap();
     assert!(logs.is_empty());
-    assert_eq!(&record.content[..], b"neither");
+    assert_eq!(&*record.content, "neither");
   }
 
   #[test]

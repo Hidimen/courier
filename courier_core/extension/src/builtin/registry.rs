@@ -5,7 +5,7 @@ use crate::builtin::Module;
 /// # Examples
 ///
 /// ```rust
-/// use extension::{Module, Registry};
+/// use extension::builtin::{Module, Registry};
 ///
 /// let mut registry = Registry::<()>::new();
 /// registry.register(Module::new("demo", "0.1.0", "A demo module"));
@@ -24,7 +24,7 @@ impl<R> Registry<R> {
   /// # Examples
   ///
   /// ```rust
-  /// use extension::Registry;
+  /// use extension::builtin::Registry;
   ///
   /// let registry = Registry::<()>::new();
   /// assert_eq!(registry.iter().count(), 0);
@@ -38,7 +38,7 @@ impl<R> Registry<R> {
   /// # Examples
   ///
   /// ```rust
-  /// use extension::{Module, Registry};
+  /// use extension::builtin::{Module, Registry};
   ///
   /// let mut registry = Registry::<()>::new();
   /// registry.register(Module::new("demo", "0.1.0", "A demo module"));
@@ -52,7 +52,7 @@ impl<R> Registry<R> {
   /// # Examples
   ///
   /// ```rust
-  /// use extension::{Module, Registry};
+  /// use extension::builtin::{Module, Registry};
   ///
   /// let mut registry = Registry::<()>::new();
   /// registry.register(Module::new("demo", "0.1.0", "A demo module"));
@@ -68,7 +68,7 @@ impl<R> Registry<R> {
   /// # Examples
   ///
   /// ```rust
-  /// use extension::{Module, Registry};
+  /// use extension::builtin::{Module, Registry};
   ///
   /// let mut registry = Registry::<()>::new();
   /// registry.register(Module::new("demo", "0.1.0", "A demo module"));

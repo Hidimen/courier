@@ -138,7 +138,7 @@ fn run(config: Config) -> anyhow::Result<()> {
     if let Some(bus) = event::Dispatcher::try_get_instance() {
       bus.shutdown().await;
     }
-    if let Some(logger) = logger::Logger::try_get_instance() {
+    if let Some(logger) = logger::Logger::instance() {
       logger.shutdown();
     }
 
@@ -192,11 +192,17 @@ async fn run_instance(config: &Config) -> anyhow::Result<()> {
 
   let metrics = depot.metrics();
   info!(
-    "depot",
+    namespace = "depot",
     "Server runs on `{}` protocol provided by `{}` builtin module, based on `{}` transport",
     metrics.protocol,
     module.name(),
     metrics.transport
+  );
+  info!(
+    namespace = "depot",
+    "Listening on {} address(es): {}",
+    &config.listen.len(),
+    &config.listen.join(", ")
   );
 
   depot.wait().await;
@@ -217,6 +223,10 @@ async fn run_instance(config: &Config) -> anyhow::Result<()> {
 fn build_depot(
   module: &Module<Depot>, config: &Config,
 ) -> anyhow::Result<Depot> {
+  if config.listen.is_empty() {
+    anyhow::bail!("No addresses specified");
+  }
+
   let mut depot = Depot::new(config.shutdown_timeout);
 
   match config.kind {
@@ -274,8 +284,7 @@ fn install_with<F: logger::Format>(
     .capacity(config.capacity)
     .format(formatter)
     .add_flow(ConsoleFlow::new(config.level))
-    .build()
-    .map_err(|error| anyhow::anyhow!("Unable to create a logger: {error}"))?;
+    .build();
 
   Ok(())
 }

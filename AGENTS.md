@@ -66,7 +66,7 @@ Module-level docs use `//!` with the same structure.
 - Use `thiserror` for error types — the project workspace already depends on `thiserror 2.0.18`.
 - Use `async-trait` (`0.1.89`) for traits with async methods.
 - Tokio (`1.52.1`) is the async runtime — use `#[tokio::test]` for async tests.
-- Type-state builder pattern is used in `logger::Builder<F, M>` — follow that pattern for new builders.
+- Type-state builder pattern is used in `logger::Builder<State, Formatter, F>` — follow that pattern for new builders.
 - Do not use `async-trait` unless necessary. Instead, `async fn in trait` is preferred. For example:
 ```rust
 // Define

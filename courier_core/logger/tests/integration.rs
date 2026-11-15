@@ -1,4 +1,3 @@
-use std::fmt::Write as _;
 use std::sync::{Arc, Mutex};
 
 use logger::{Builder, Flow, HandlingKind, Level, Logger, Record};
@@ -35,8 +34,8 @@ impl Flow for MockFlow {
   }
 }
 
-/// Dropping the logger is synchronous: the worker drains every queued
-/// record, flushes the flows and is joined before `drop` returns.
+/// Dropping the logger is synchronous: the worker drains every queued record,
+/// flushes the flows and is joined before `drop` returns.
 fn flush_and_drop(logger: Arc<Logger>) {
   drop(logger);
 }
@@ -48,15 +47,14 @@ fn test_full_pipeline() {
   let output = Arc::new(Mutex::new(Vec::new()));
   let flow = MockFlow::new(Level::Trace, output.clone());
 
-  let logger =
-    Builder::new().capacity(128).add_flow(flow).build_local().unwrap();
+  let logger = Builder::new().capacity(128).add_flow(flow).build_local();
 
-  logger.trace("trace msg".into(), "test");
-  logger.debug("debug msg".into(), "test");
-  logger.info("info msg".into(), "test");
-  logger.warn("warn msg".into(), "test");
-  logger.error("error msg".into(), "test");
-  logger.fatal("fatal msg".into(), "test");
+  logger.log(Record::new(Level::Trace, "test", "trace msg"));
+  logger.log(Record::new(Level::Debug, "test", "debug msg"));
+  logger.log(Record::new(Level::Info, "test", "info msg"));
+  logger.log(Record::new(Level::Warn, "test", "warn msg"));
+  logger.log(Record::new(Level::Error, "test", "error msg"));
+  logger.log(Record::new(Level::Fatal, "test", "fatal msg"));
 
   flush_and_drop(logger);
 
@@ -78,16 +76,14 @@ fn test_multiple_loggers_independent() {
   let logger1 = Builder::new()
     .capacity(64)
     .add_flow(MockFlow::new(Level::Trace, out1.clone()))
-    .build_local()
-    .unwrap();
+    .build_local();
   let logger2 = Builder::new()
     .capacity(64)
     .add_flow(MockFlow::new(Level::Trace, out2.clone()))
-    .build_local()
-    .unwrap();
+    .build_local();
 
-  logger1.info("from logger1".into(), "test");
-  logger2.info("from logger2".into(), "test");
+  logger1.log(Record::new(Level::Info, "test", "from logger1"));
+  logger2.log(Record::new(Level::Info, "test", "from logger2"));
 
   flush_and_drop(logger1);
   flush_and_drop(logger2);
@@ -102,15 +98,14 @@ fn test_level_filtering() {
   // MockFlow at WARN level — only WARN, ERROR, FATAL messages pass
   let flow = MockFlow::new(Level::Warn, output.clone());
 
-  let logger =
-    Builder::new().capacity(128).add_flow(flow).build_local().unwrap();
+  let logger = Builder::new().capacity(128).add_flow(flow).build_local();
 
-  logger.info("this should be filtered".into(), "test");
-  logger.debug("filtered too".into(), "test");
-  logger.trace("also filtered".into(), "test");
-  logger.warn("this should pass".into(), "test");
-  logger.error("error passes too".into(), "test");
-  logger.fatal("fatal also passes".into(), "test");
+  logger.log(Record::new(Level::Info, "test", "this should be filtered"));
+  logger.log(Record::new(Level::Debug, "test", "filtered too"));
+  logger.log(Record::new(Level::Trace, "test", "also filtered"));
+  logger.log(Record::new(Level::Warn, "test", "this should pass"));
+  logger.log(Record::new(Level::Error, "test", "error passes too"));
+  logger.log(Record::new(Level::Fatal, "test", "fatal also passes"));
 
   flush_and_drop(logger);
 
@@ -126,10 +121,9 @@ fn test_drop_cleanly_terminates() {
   let output = Arc::new(Mutex::new(Vec::new()));
   let flow = MockFlow::new(Level::Trace, output.clone());
 
-  let logger =
-    Builder::new().capacity(64).add_flow(flow).build_local().unwrap();
+  let logger = Builder::new().capacity(64).add_flow(flow).build_local();
 
-  logger.info("before drop".into(), "test");
+  logger.log(Record::new(Level::Info, "test", "before drop"));
   // Drop should not hang
   flush_and_drop(logger);
 
@@ -141,10 +135,9 @@ fn test_logger_with_target_routing() {
   let output = Arc::new(Mutex::new(Vec::new()));
   let flow = MockFlow::new(Level::Trace, output.clone());
 
-  let logger =
-    Builder::new().capacity(128).add_flow(flow).build_local().unwrap();
+  let logger = Builder::new().capacity(128).add_flow(flow).build_local();
 
-  logger.info_with_target("targeted log".into(), "test", "mock");
+  logger.log(Record::with_target(Level::Info, "test", "mock", "targeted log"));
   flush_and_drop(logger);
 
   let logs = output.lock().unwrap();
@@ -153,47 +146,25 @@ fn test_logger_with_target_routing() {
 }
 
 #[test]
-fn test_logger_from_static_variants() {
-  let output = Arc::new(Mutex::new(Vec::new()));
-  let flow = MockFlow::new(Level::Trace, output.clone());
-
-  let logger =
-    Builder::new().capacity(128).add_flow(flow).build_local().unwrap();
-
-  logger.trace_from_static("trace static", "test");
-  logger.debug_from_static("debug static", "test");
-  logger.info_from_static("info static", "test");
-  logger.warn_from_static("warn static", "test");
-  logger.error_from_static("error static", "test");
-  logger.fatal_from_static("fatal static", "test");
-
-  flush_and_drop(logger);
-
-  let logs = output.lock().unwrap();
-  assert_eq!(logs.len(), 6);
-}
-
-#[test]
 fn test_custom_formatter() {
+  use std::fmt::Write as _;
+
   let output = Arc::new(Mutex::new(Vec::new()));
   let flow = MockFlow::new(Level::Trace, output.clone());
 
   let logger = Builder::new()
     .capacity(128)
     .format(|record: &Record, _timestamp: &str, out: &mut String| {
-      write!(
+      let _ = write!(
         out,
         "[{}][{}] {}",
-        record.namespace,
-        record.level,
-        String::from_utf8_lossy(&record.content)
-      )
+        record.namespace, record.level, record.content
+      );
     })
     .add_flow(flow)
-    .build_local()
-    .unwrap();
+    .build_local();
 
-  logger.info("custom format msg".into(), "myns");
+  logger.log(Record::new(Level::Info, "myns", "custom format msg"));
   flush_and_drop(logger);
 
   let logs = output.lock().unwrap();
@@ -212,18 +183,18 @@ fn test_global_install_and_macros() {
   let flow = MockFlow::new(Level::Trace, output.clone());
 
   // Install globally — this is the only test that does this
-  let logger = Builder::new().capacity(256).add_flow(flow).build().unwrap();
+  let logger = Builder::new().capacity(256).add_flow(flow).build();
 
-  // Test get_instance() works
-  let instance = Logger::get_instance();
+  // Test instance() works
+  assert!(Logger::instance().is_some());
 
-  // Test all macros at each level (positional namespace, static)
-  logger::trace!("test", "trace from macro");
-  logger::debug!("test", "debug from macro");
-  logger::info!("test", "info from macro");
-  logger::warn!("test", "warn from macro");
-  logger::error!("test", "error from macro");
-  logger::fatal!("test", "fatal from macro");
+  // Test all levels (positional namespace)
+  logger::trace!(namespace = "test", "trace from macro");
+  logger::debug!(namespace = "test", "debug from macro");
+  logger::info!(namespace = "test", "info from macro");
+  logger::warn!(namespace = "test", "warn from macro");
+  logger::error!(namespace = "test", "error from macro");
+  logger::fatal!(namespace = "test", "fatal from macro");
 
   // Test single-arg macros (default ns = env!("CARGO_PKG_NAME"))
   let formatted_val = "formatted";
@@ -231,11 +202,11 @@ fn test_global_install_and_macros() {
   logger::info!("single arg: {}", formatted_val);
 
   // Test positional template macros
-  logger::info!("test", "template: {}", "hello");
-  logger::info!("test", "named: {name}", name = "world");
-  logger::info!("test", "expr: {}", 1 + 2 * 3);
+  logger::info!(namespace = "test", "template: {}", "hello");
+  logger::info!(namespace = "test", "named: {name}", name = "world");
+  logger::info!(namespace = "test", "expr: {}", 1 + 2 * 3);
 
-  // Test named namespace macros
+  // Test bare static via the namespace form
   logger::info!(namespace = "test", "bare static");
   logger::info!(namespace = "test", "named fmt: {}", 42);
 
@@ -252,7 +223,8 @@ fn test_global_install_and_macros() {
   );
   logger::info!(target = "mock", namespace = "ns", "target + named ns");
 
-  std::thread::sleep(std::time::Duration::from_millis(200));
+  // Shut the global logger down so every queued record reached the flow.
+  Logger::instance().unwrap().shutdown();
 
   let logs = output.lock().unwrap();
   assert_eq!(logs.len(), 18);
@@ -280,6 +252,5 @@ fn test_global_install_and_macros() {
   assert!(logs.iter().any(|m| m.contains("target + named ns")));
 
   // Clean up
-  drop(instance);
   drop(logger);
 }

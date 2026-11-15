@@ -10,7 +10,7 @@ use std::{io, net::SocketAddr};
 /// ```rust
 /// use std::io;
 ///
-/// use extension::Provider;
+/// use extension::builtin::capability::Provider;
 ///
 /// let provider = Provider::new(|_: &mut (), _| -> io::Result<()> { Ok(()) });
 /// ```
@@ -26,7 +26,7 @@ impl<R> Provider<R> {
   /// ```rust
   /// use std::io;
   ///
-  /// use extension::Provider;
+  /// use extension::builtin::capability::Provider;
   ///
   /// let provider = Provider::new(|_: &mut (), _| -> io::Result<()> { Ok(()) });
   /// ```

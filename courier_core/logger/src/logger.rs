@@ -1,80 +1,89 @@
 use std::{
   fmt::Write as _,
-  sync::{Arc, Mutex, OnceLock},
+  sync::{
+    Arc, Mutex, OnceLock,
+    atomic::{AtomicBool, Ordering},
+  },
   thread::JoinHandle,
+  time::{Duration, Instant},
 };
 
-use chrono::DateTime;
-use crossbeam_channel::{Sender, bounded};
+use chrono::Utc;
+use crossbeam_channel::{SendTimeoutError, Sender, bounded};
 
 use crate::{Format, HandlingKind, Level, Record, flow::Flow};
 
 static LOGGER: OnceLock<Arc<Logger>> = OnceLock::new();
 
+/// A message crossing the logger channel.
+///
+/// Records and the shutdown notification share one channel so the worker
+/// always observes them in order: every record queued before `Shutdown` is
+/// drained before the flows are flushed.
+enum Message {
+  /// A record to render and dispatch.
+  Record(Record),
+  /// Stops the worker after the records queued before it have been written.
+  Shutdown,
+}
+
 /// The core logger that manages a background thread for asynchronous log
 /// processing.
 ///
-/// A `Logger` holds an internal MPSC channel and spawns a dedicated thread
-/// that renders each incoming [`Record`] into its complete textual line
-/// through the configured [`Format`] and dispatches that line to the
-/// registered [`Flow`]s.
+/// A `Logger` owns a bounded MPSC channel and a dedicated thread that renders
+/// each incoming [`Record`] into its complete textual line through the
+/// configured [`Format`] and dispatches that line to the registered
+/// [`Flow`]s.
 ///
 /// # Performance model
 ///
-/// - **Call-site gating** — records below the logger's minimum accepted
-///   level are discarded before the payload is formatted and before they
-///   cross the channel.
+/// - **Call-site gating** — records below the logger's minimum accepted level
+///   are discarded before the payload is formatted and before they cross the
+///   channel.
+/// - **Lock-free send** — the sender is stored directly, so logging a record
+///   costs one channel `try_send` instead of a mutex acquisition.
+/// - **Deferred timestamps** — records do not carry a timestamp; the worker
+///   stamps them when they are dequeued, so the call site never reads a clock.
 /// - **Single-pass rendering** — the worker renders the *complete* line
-///   through the configured [`Format`] (which has full control of the
-///   output) into a reusable buffer, then flows write it verbatim;
-///   steady-state formatting allocates nothing and no sink re-formats.
+///   through the configured [`Format`] into a reusable buffer, then flows
+///   write it verbatim; steady-state formatting allocates nothing.
 /// - **Cached timestamps** — the `YYYY-MM-DD HH:MM:SS` prefix is computed at
 ///   most once per wall-clock second on the worker thread.
-/// - **Idle cost** — the worker blocks on the channel and wakes only when a
-///   record arrives or the logger is dropped.
 ///
 /// # Lifecycle
 ///
-/// The logger thread runs until the `Logger` is dropped or
-/// [`shutdown`](Self::shutdown) is called, at which point the internal
-/// sender is dropped, the worker drains every queued record, flushes all
-/// flows, exits, and is joined — so `drop` (or `shutdown`) returning
-/// guarantees all previously sent records reached their sinks.
+/// The logger thread runs until [`shutdown`](Self::shutdown) is called or the
+/// `Logger` is dropped. Both paths are synchronous: the worker drains every
+/// queued record, flushes all flows, exits, and is joined — so returning from
+/// `shutdown` guarantees all previously accepted records reached their sinks.
 ///
-/// A `Logger` installed as the global singleton is never dropped, because
-/// the singleton keeps an `Arc` alive for the whole process. Such a logger
-/// must therefore be closed explicitly with
-/// [`shutdown`](Self::shutdown) — otherwise the queued records and the
-/// final flush are lost when the process exits.
+/// A `Logger` installed as the global singleton is never dropped, because the
+/// singleton keeps an `Arc` alive for the whole process. Such a logger must
+/// therefore be closed explicitly with [`shutdown`](Self::shutdown).
 ///
 /// # Global singleton
 ///
 /// A `Logger` can be installed as a global singleton via
 /// [`Builder::build`](crate::Builder::build). The convenience macros
-/// (`info!`, `warn!`, etc.) call [`Logger::get_instance`] internally, so
-/// they only work after installation.
+/// (`info!`, `warn!`, etc.) look it up through [`Logger::instance`], and
+/// become no-ops when no logger has been installed.
 ///
-/// # Example
+/// # Examples
 ///
-/// ```rust
-/// use logger::{Logger, Level};
+/// ```rust,no_run
+/// use logger::{Builder, Level, Record};
 ///
-/// let logger = Logger::new(
-///     128,
-///     logger::flows::ConsoleFlow::new(Level::Info),
-///     |_record: &logger::Record, _timestamp: &str, _out: &mut String| Ok(()),  // no-op formatter
-/// );
+/// let logger = Builder::new()
+///   .add_flow(logger::flows::ConsoleFlow::new(Level::Info))
+///   .build_local();
 ///
-/// logger.info("Hello!".into(), "my_app");
+/// logger.log(Record::new(Level::Info, "my_app", "Hello!"));
 /// drop(logger);
 /// ```
-#[derive(Debug)]
 pub struct Logger {
+  sender: Sender<Message>,
+  closed: AtomicBool,
   handle: Mutex<Option<JoinHandle<()>>>,
-  /// The send half of the record channel. It is taken by
-  /// [`shutdown`](Self::shutdown), which closes the channel and lets the
-  /// worker drain the remaining records before exiting.
-  sender: Mutex<Option<Sender<Record>>>,
   min_level: Level,
 }
 
@@ -82,11 +91,14 @@ impl Logger {
   /// Creates a new `Logger` instance without installing it as the global
   /// singleton.
   ///
-  /// The logger spawns a background thread that will run until the logger is dropped.
+  /// The logger spawns a background thread that runs until the logger is
+  /// dropped or [`shutdown`](Self::shutdown) is called.
   ///
   /// # Parameters
   ///
-  /// - `capacity` — size of the internal MPSC channel buffer.
+  /// - `capacity` — size of the internal channel buffer. Zero is promoted to
+  ///   one, because a zero-capacity channel only accepts a record while the
+  ///   worker is parked in `recv`.
   /// - `flows` — the composite flow (typically a [`Stack`](crate::flow::Stack)).
   /// - `format` — renders the complete textual line for each record.
   ///
@@ -94,12 +106,14 @@ impl Logger {
   ///
   /// Panics if the internal thread cannot be spawned (e.g. the OS is out of
   /// resources).
-  pub fn new<F, Formatter>(capacity: usize, flows: F, format: Formatter) -> Self
+  pub(crate) fn new<F, Formatter>(
+    capacity: usize, flows: F, format: Formatter,
+  ) -> Self
   where
     F: Flow,
     Formatter: Format,
   {
-    let (sender, receiver) = bounded::<Record>(capacity);
+    let (sender, receiver) = bounded::<Message>(capacity.max(1));
     let min_level = flows.min_level();
 
     let handle = std::thread::Builder::new()
@@ -110,42 +124,33 @@ impl Logger {
         let format = format;
 
         // Worker-local reusable buffers. The timestamp string is recomputed
-        // at most once per wall-clock second (records carry second
-        // resolution), and the line buffer is rewritten in place by the
-        // formatter for every record — steady-state formatting allocates
-        // nothing here.
+        // at most once per wall-clock second, and the line buffer is rewritten
+        // in place by the formatter for every record — steady-state formatting
+        // allocates nothing here.
         let mut last_second = i64::MIN;
         let mut ts_buf = String::new();
         let mut line = String::new();
 
-        while let Ok(data) = receiver.recv() {
-          if !flows.can_log(&data) {
+        while let Ok(Message::Record(record)) = receiver.recv() {
+          if !flows.can_log(&record) {
             continue;
           }
 
-          if data.timestamp != last_second {
-            last_second = data.timestamp;
+          let now = Utc::now();
+          if now.timestamp() != last_second {
+            last_second = now.timestamp();
             ts_buf.clear();
-            let _ = write!(
-              ts_buf,
-              "{}",
-              DateTime::from_timestamp(data.timestamp, 0)
-                .unwrap()
-                .format("%Y-%m-%d %H:%M:%S")
-            );
+            let _ = write!(ts_buf, "{}", now.format("%Y-%m-%d %H:%M:%S"));
           }
 
           line.clear();
-          if format.format(&data, &ts_buf, &mut line).is_err() {
-            continue;
-          }
+          format.format(&record, &ts_buf, &mut line);
 
-          match flows.println(&data, &line) {
-            Ok(()) => continue,
+          match flows.println(&record, &line) {
+            Ok(()) | Err(HandlingKind::Ignore) => {},
             Err(HandlingKind::Fuse(reason)) => {
               panic!("Logger encountered an unrecoverable error: {}", reason)
             },
-            Err(HandlingKind::Ignore) => continue,
           }
         }
 
@@ -154,8 +159,9 @@ impl Logger {
       .expect("Unable to spawn a logger thread");
 
     Self {
+      sender,
+      closed: AtomicBool::new(false),
       handle: Mutex::new(Some(handle)),
-      sender: Mutex::new(Some(sender)),
       min_level,
     }
   }
@@ -165,121 +171,122 @@ impl Logger {
   /// # Panics
   ///
   /// Panics if a logger has already been installed.
-  pub fn install(self) -> Arc<Self> {
+  pub(crate) fn install(self) -> Arc<Self> {
     let this = Arc::new(self);
-    LOGGER.set(this.clone()).expect("Logger has already been installed");
+    if LOGGER.set(this.clone()).is_err() {
+      panic!("Logger has already been installed");
+    }
     this
   }
 
-  /// Returns a clone of the globally-installed logger.
-  ///
-  /// # Panics
-  ///
-  /// Panics if no logger has been installed yet.
-  ///
-  /// # Example
-  ///
-  /// ```rust
-  /// use logger::{Builder, Level, Logger};
-  ///
-  /// Builder::new()
-  ///     .capacity(128)
-  ///     .add_flow(logger::flows::ConsoleFlow::new(Level::Info))
-  ///     .build()
-  ///     .unwrap();
-  ///
-  /// let logger = Logger::get_instance();
-  /// logger.info("Hello!".into(), "my_app");
-  /// ```
-  pub fn get_instance() -> Arc<Self> {
-    match LOGGER.get() {
-      Some(s) => s.clone(),
-      None => panic!("Logger not initialized"),
-    }
-  }
-
-  /// Returns a clone of the globally-installed logger if instance exists.
-  ///
-  /// # Returns
-  /// `Option<Arc<Logger>>` is returned when instance exists, and otherwise, `None` is returned.
-  ///
-  /// # Example
-  ///
-  /// ```rust
-  /// use logger::{Builder, Level, Logger};
-  ///
-  /// Builder::new()
-  ///     .capacity(128)
-  ///     .add_flow(logger::flows::ConsoleFlow::new(Level::Info))
-  ///     .build()
-  ///     .unwrap();
-  ///
-  /// let logger = Logger::try_get_instance();
-  /// logger.unwrap().info("Hello!".into(), "my_app");
-  /// ```
-  pub fn try_get_instance() -> Option<Arc<Self>> {
-    LOGGER.get().cloned()
-  }
-
-  /// Returns `true` when the globally-installed logger could emit a record at
-  /// `level`.
+  /// Returns the globally installed logger, if any.
   ///
   /// This is the call-site gate used by the logging macros: when it returns
-  /// `false` the payload is never formatted and nothing crosses the channel.
-  ///
-  /// When no logger has been installed yet this always returns `true`, which
-  /// preserves the documented behaviour of the plain macros (they panic via
-  /// [`get_instance`](Logger::get_instance)); the `try_*` macros then no-op
-  /// as usual.
-  #[doc(hidden)]
-  pub fn is_enabled(level: Level) -> bool {
-    match LOGGER.get() {
-      Some(logger) => level >= logger.min_level,
-      None => true,
-    }
-  }
-
-  fn log(&self, record: Record) {
-    // Cheap instance gate: records this logger can never emit never reach
-    // the channel (macros already skipped building them entirely).
-    if record.level < self.min_level {
-      return;
-    }
-    if let Ok(sender) = self.sender.lock()
-      && let Some(sender) = sender.as_ref()
-    {
-      let _ = sender.try_send(record);
-    }
-  }
-
-  /// Shuts the logger down.
-  ///
-  /// No record is accepted afterwards: the ones still queued are
-  /// written, every flow is flushed and the worker thread is joined, so
-  /// this returns only once every previously sent record has reached its
-  /// sink. Calling it more than once is safe, and `drop` calls it too.
+  /// `None` the macros do nothing, so logging before installation is safe.
   ///
   /// # Examples
   ///
   /// ```rust
   /// use logger::{Builder, Level, Logger};
   ///
-  /// let logger = Builder::new()
-  ///     .capacity(128)
-  ///     .add_flow(logger::flows::ConsoleFlow::new(Level::Info))
-  ///     .build_local()
-  ///     .unwrap();
+  /// assert!(Logger::instance().is_none());
   ///
-  /// logger.info("Hello!".into(), "my_app");
+  /// Builder::new()
+  ///   .add_flow(logger::flows::ConsoleFlow::new(Level::Info))
+  ///   .build();
+  ///
+  /// assert!(Logger::instance().is_some());
+  /// ```
+  pub fn instance() -> Option<&'static Self> {
+    LOGGER.get().map(|logger| logger.as_ref())
+  }
+
+  /// Returns `true` when this logger could emit a record at `level`.
+  ///
+  /// This is the call-site gate used by the logging macros: when it returns
+  /// `false` the payload is never formatted and nothing crosses the channel.
+  ///
+  /// # Examples
+  ///
+  /// ```rust,no_run
+  /// use logger::{Builder, Level};
+  ///
+  /// let logger = Builder::new()
+  ///   .add_flow(logger::flows::ConsoleFlow::new(Level::Info))
+  ///   .build_local();
+  ///
+  /// assert!(logger.enabled(Level::Error));
+  /// assert!(!logger.enabled(Level::Debug));
+  /// ```
+  pub fn enabled(&self, level: Level) -> bool {
+    level >= self.min_level
+  }
+
+  /// Queues a record for the worker thread.
+  ///
+  /// The record is dropped when the logger has been shut down, when its level
+  /// is below the logger's minimum accepted level, or when the channel is
+  /// full. Sending never blocks, so this is safe to call from async code.
+  ///
+  /// # Examples
+  ///
+  /// ```rust,no_run
+  /// use logger::{Builder, Level, Record};
+  ///
+  /// let logger = Builder::new()
+  ///   .add_flow(logger::flows::ConsoleFlow::new(Level::Info))
+  ///   .build_local();
+  ///
+  /// logger.log(Record::new(Level::Info, "my_app", "hello"));
+  /// drop(logger);
+  /// ```
+  pub fn log(&self, record: Record) {
+    // Cheap gate: records this logger can never emit never reach the channel
+    // (the macros already skipped building them entirely).
+    if self.closed.load(Ordering::Relaxed) {
+      return;
+    }
+    if record.level < self.min_level {
+      return;
+    }
+    let _ = self.sender.try_send(Message::Record(record));
+  }
+
+  /// Shuts the logger down.
+  ///
+  /// No record is accepted afterwards: the ones still queued are written,
+  /// every flow is flushed and the worker thread is joined, so this returns
+  /// only once every previously accepted record has reached its sink.
+  /// Calling it more than once is safe, and `drop` calls it too.
+  ///
+  /// # Examples
+  ///
+  /// ```rust,no_run
+  /// use logger::{Builder, Level, Record};
+  ///
+  /// let logger = Builder::new()
+  ///   .add_flow(logger::flows::ConsoleFlow::new(Level::Info))
+  ///   .build_local();
+  ///
+  /// logger.log(Record::new(Level::Info, "my_app", "bye"));
   /// logger.shutdown();
   /// ```
   pub fn shutdown(&self) {
-    // Dropping the sender disconnects the channel: the worker drains
-    // every queued record, flushes all flows and exits. Joining
-    // afterwards makes this fully synchronous — when it returns every
-    // record has reached its sinks and the thread is gone.
-    if let Ok(mut sender) = self.sender.lock() {
-      sender.take();
+    self.closed.store(true, Ordering::SeqCst);
+
+    // Wake the worker so it drains the queue and exits. If the channel is
+    // full, retry for a bounded time instead of blocking the caller forever.
+    if self.sender.try_send(Message::Shutdown).is_err() {
+      let deadline = Instant::now() + Duration::from_millis(500);
+      while Instant::now() < deadline {
+        match self
+          .sender
+          .send_timeout(Message::Shutdown, Duration::from_millis(10))
+        {
+          Ok(()) | Err(SendTimeoutError::Disconnected(_)) => break,
+          Err(SendTimeoutError::Timeout(_)) => {},
+        }
+      }
     }
 
     if let Ok(mut handle) = self.handle.lock()
@@ -287,198 +294,6 @@ impl Logger {
     {
       let _ = handle.join();
     }
-  }
-
-  /// Logs a message at [`Level::Trace`].
-  pub fn trace(&self, content: String, namespace: &'static str) {
-    self.log(Record::new(content, Level::Trace, namespace));
-  }
-
-  /// Logs a message at [`Level::Trace`] with a target for flow routing.
-  pub fn trace_with_target(
-    &self, content: String, namespace: &'static str, target: &'static str,
-  ) {
-    self.log(Record::new_with_target(content, Level::Trace, namespace, target));
-  }
-
-  /// Logs a `&'static str` at [`Level::Trace`] without allocating.
-  pub fn trace_from_static(
-    &self, content: &'static str, namespace: &'static str,
-  ) {
-    self.log(Record::new_from_static(content, Level::Trace, namespace));
-  }
-
-  /// Logs a `&'static str` at [`Level::Trace`] with a target, without
-  /// allocating.
-  pub fn trace_from_static_with_target(
-    &self, content: &'static str, namespace: &'static str, target: &'static str,
-  ) {
-    self.log(Record::new_from_static_with_target(
-      content,
-      Level::Trace,
-      namespace,
-      target,
-    ));
-  }
-
-  /// Logs a message at [`Level::Debug`].
-  pub fn debug(&self, content: String, namespace: &'static str) {
-    self.log(Record::new(content, Level::Debug, namespace));
-  }
-
-  /// Logs a message at [`Level::Debug`] with a target for flow routing.
-  pub fn debug_with_target(
-    &self, content: String, namespace: &'static str, target: &'static str,
-  ) {
-    self.log(Record::new_with_target(content, Level::Debug, namespace, target));
-  }
-
-  /// Logs a `&'static str` at [`Level::Debug`] without allocating.
-  pub fn debug_from_static(
-    &self, content: &'static str, namespace: &'static str,
-  ) {
-    self.log(Record::new_from_static(content, Level::Debug, namespace));
-  }
-
-  /// Logs a `&'static str` at [`Level::Debug`] with a target, without
-  /// allocating.
-  pub fn debug_from_static_with_target(
-    &self, content: &'static str, namespace: &'static str, target: &'static str,
-  ) {
-    self.log(Record::new_from_static_with_target(
-      content,
-      Level::Debug,
-      namespace,
-      target,
-    ));
-  }
-
-  /// Logs a message at [`Level::Info`].
-  pub fn info(&self, content: String, namespace: &'static str) {
-    self.log(Record::new(content, Level::Info, namespace));
-  }
-
-  /// Logs a message at [`Level::Info`] with a target for flow routing.
-  pub fn info_with_target(
-    &self, content: String, namespace: &'static str, target: &'static str,
-  ) {
-    self.log(Record::new_with_target(content, Level::Info, namespace, target));
-  }
-
-  /// Logs a `&'static str` at [`Level::Info`] without allocating.
-  pub fn info_from_static(
-    &self, content: &'static str, namespace: &'static str,
-  ) {
-    self.log(Record::new_from_static(content, Level::Info, namespace));
-  }
-
-  /// Logs a `&'static str` at [`Level::Info`] with a target, without
-  /// allocating.
-  pub fn info_from_static_with_target(
-    &self, content: &'static str, namespace: &'static str, target: &'static str,
-  ) {
-    self.log(Record::new_from_static_with_target(
-      content,
-      Level::Info,
-      namespace,
-      target,
-    ));
-  }
-
-  /// Logs a message at [`Level::Warn`].
-  pub fn warn(&self, content: String, namespace: &'static str) {
-    self.log(Record::new(content, Level::Warn, namespace));
-  }
-
-  /// Logs a message at [`Level::Warn`] with a target for flow routing.
-  pub fn warn_with_target(
-    &self, content: String, namespace: &'static str, target: &'static str,
-  ) {
-    self.log(Record::new_with_target(content, Level::Warn, namespace, target));
-  }
-
-  /// Logs a `&'static str` at [`Level::Warn`] without allocating.
-  pub fn warn_from_static(
-    &self, content: &'static str, namespace: &'static str,
-  ) {
-    self.log(Record::new_from_static(content, Level::Warn, namespace));
-  }
-
-  /// Logs a `&'static str` at [`Level::Warn`] with a target, without
-  /// allocating.
-  pub fn warn_from_static_with_target(
-    &self, content: &'static str, namespace: &'static str, target: &'static str,
-  ) {
-    self.log(Record::new_from_static_with_target(
-      content,
-      Level::Warn,
-      namespace,
-      target,
-    ));
-  }
-
-  /// Logs a message at [`Level::Error`].
-  pub fn error(&self, content: String, namespace: &'static str) {
-    self.log(Record::new(content, Level::Error, namespace));
-  }
-
-  /// Logs a message at [`Level::Error`] with a target for flow routing.
-  pub fn error_with_target(
-    &self, content: String, namespace: &'static str, target: &'static str,
-  ) {
-    self.log(Record::new_with_target(content, Level::Error, namespace, target));
-  }
-
-  /// Logs a `&'static str` at [`Level::Error`] without allocating.
-  pub fn error_from_static(
-    &self, content: &'static str, namespace: &'static str,
-  ) {
-    self.log(Record::new_from_static(content, Level::Error, namespace));
-  }
-
-  /// Logs a `&'static str` at [`Level::Error`] with a target, without
-  /// allocating.
-  pub fn error_from_static_with_target(
-    &self, content: &'static str, namespace: &'static str, target: &'static str,
-  ) {
-    self.log(Record::new_from_static_with_target(
-      content,
-      Level::Error,
-      namespace,
-      target,
-    ));
-  }
-
-  /// Logs a message at [`Level::Fatal`].
-  pub fn fatal(&self, content: String, namespace: &'static str) {
-    self.log(Record::new(content, Level::Fatal, namespace));
-  }
-
-  /// Logs a message at [`Level::Fatal`] with a target for flow routing.
-  pub fn fatal_with_target(
-    &self, content: String, namespace: &'static str, target: &'static str,
-  ) {
-    self.log(Record::new_with_target(content, Level::Fatal, namespace, target));
-  }
-
-  /// Logs a `&'static str` at [`Level::Fatal`] without allocating.
-  pub fn fatal_from_static(
-    &self, content: &'static str, namespace: &'static str,
-  ) {
-    self.log(Record::new_from_static(content, Level::Fatal, namespace));
-  }
-
-  /// Logs a `&'static str` at [`Level::Fatal`] with a target, without
-  /// allocating.
-  pub fn fatal_from_static_with_target(
-    &self, content: &'static str, namespace: &'static str, target: &'static str,
-  ) {
-    self.log(Record::new_from_static_with_target(
-      content,
-      Level::Fatal,
-      namespace,
-      target,
-    ));
   }
 }
 
@@ -488,23 +303,13 @@ impl Drop for Logger {
   }
 }
 
-impl Default for Logger {
-  fn default() -> Self {
-    Self::new(
-      1000,
-      crate::flows::ConsoleFlow::new(Level::Info),
-      crate::DefaultFormatter,
-    )
-  }
-}
-
 #[cfg(test)]
 mod tests {
   use std::sync::{Arc, Mutex};
 
-  use crate::{Builder, HandlingKind, Level, Logger, Record, flow::Flow};
+  use crate::{HandlingKind, Level, Logger, Record, flow::Flow};
 
-  /// A mock flow that captures formatted output into a shared Vec<String>.
+  /// A mock flow that captures formatted output into a shared `Vec<String>`.
   struct MockFlow {
     level: Level,
     output: Arc<Mutex<Vec<String>>>,
@@ -537,30 +342,26 @@ mod tests {
     }
   }
 
+  /// A formatter that writes the raw payload verbatim.
+  fn payload_only(record: &Record, _timestamp: &str, out: &mut String) {
+    out.push_str(&record.content);
+    out.push('\n');
+  }
+
   #[test]
   fn logger_logs_at_all_levels() {
     let output = Arc::new(Mutex::new(Vec::new()));
     let flow = MockFlow::new(Level::Trace, output.clone());
-    let logger = Logger::new(
-      128,
-      flow,
-      |record: &Record, _timestamp: &str, out: &mut String| {
-        // Simulates a formatter that emits the raw payload verbatim.
-        out.push_str(&String::from_utf8_lossy(&record.content));
-        out.push('\n');
-        Ok(())
-      },
-    );
+    let logger = Logger::new(128, flow, payload_only);
 
-    logger.trace("trace msg".into(), "test");
-    logger.debug("debug msg".into(), "test");
-    logger.info("info msg".into(), "test");
-    logger.warn("warn msg".into(), "test");
-    logger.error("error msg".into(), "test");
-    logger.fatal("fatal msg".into(), "test");
+    logger.log(Record::new(Level::Trace, "test", "trace msg"));
+    logger.log(Record::new(Level::Debug, "test", "debug msg"));
+    logger.log(Record::new(Level::Info, "test", "info msg"));
+    logger.log(Record::new(Level::Warn, "test", "warn msg"));
+    logger.log(Record::new(Level::Error, "test", "error msg"));
+    logger.log(Record::new(Level::Fatal, "test", "fatal msg"));
 
-    // Give the logger thread time to process
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    // Dropping drains the queue synchronously, so no sleep is needed.
     drop(logger);
 
     let logs = output.lock().unwrap();
@@ -577,19 +378,21 @@ mod tests {
   fn logger_with_target() {
     let output = Arc::new(Mutex::new(Vec::new()));
     let flow = MockFlow::new(Level::Trace, output.clone());
-    let logger = Logger::new(
-      128,
-      flow,
-      |record: &Record, _timestamp: &str, out: &mut String| {
-        // Simulates a formatter that emits the raw payload verbatim.
-        out.push_str(&String::from_utf8_lossy(&record.content));
-        out.push('\n');
-        Ok(())
-      },
-    );
+    let logger = Logger::new(128, flow, payload_only);
 
-    logger.info_with_target("targeted msg".into(), "test", "mock");
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    logger.log(Record::with_target(
+      Level::Info,
+      "test",
+      "mock",
+      "targeted msg",
+    ));
+    logger.log(Record::with_target(
+      Level::Info,
+      "test",
+      "other",
+      "ignored msg",
+    ));
+
     drop(logger);
 
     let logs = output.lock().unwrap();
@@ -598,27 +401,20 @@ mod tests {
   }
 
   #[test]
-  fn logger_from_static() {
+  fn zero_capacity_still_delivers_a_record() {
     let output = Arc::new(Mutex::new(Vec::new()));
     let flow = MockFlow::new(Level::Trace, output.clone());
-    let logger = Logger::new(
-      128,
-      flow,
-      |record: &Record, _timestamp: &str, out: &mut String| {
-        // Simulates a formatter that emits the raw payload verbatim.
-        out.push_str(&String::from_utf8_lossy(&record.content));
-        out.push('\n');
-        Ok(())
-      },
-    );
+    // A raw zero-capacity channel would drop the record unless the worker was
+    // already parked in `recv`; the logger promotes zero to one.
+    let logger = Logger::new(0, flow, payload_only);
 
-    logger.info_from_static("static msg", "test");
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    logger.log(Record::new(Level::Info, "test", "first"));
+
     drop(logger);
 
     let logs = output.lock().unwrap();
     assert_eq!(logs.len(), 1);
-    assert!(logs[0].contains("static msg"));
+    assert!(logs[0].contains("first"));
   }
 
   #[test]
@@ -629,103 +425,63 @@ mod tests {
     let logger1 = Logger::new(
       128,
       MockFlow::new(Level::Trace, output1.clone()),
-      |record: &Record, _timestamp: &str, out: &mut String| {
-        // Simulates a formatter that emits the raw payload verbatim.
-        out.push_str(&String::from_utf8_lossy(&record.content));
-        out.push('\n');
-        Ok(())
-      },
+      payload_only,
     );
-    logger1.info("logger1 msg".into(), "test");
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    logger1.log(Record::new(Level::Info, "test", "logger1 msg"));
     drop(logger1);
 
     let logger2 = Logger::new(
       128,
       MockFlow::new(Level::Trace, output2.clone()),
-      |record: &Record, _timestamp: &str, out: &mut String| {
-        // Simulates a formatter that emits the raw payload verbatim.
-        out.push_str(&String::from_utf8_lossy(&record.content));
-        out.push('\n');
-        Ok(())
-      },
+      payload_only,
     );
-    logger2.info("logger2 msg".into(), "test");
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    logger2.log(Record::new(Level::Info, "test", "logger2 msg"));
     drop(logger2);
 
-    let logs1 = output1.lock().unwrap();
-    let logs2 = output2.lock().unwrap();
-    assert_eq!(logs1.len(), 1);
-    assert_eq!(logs2.len(), 1);
+    assert_eq!(output1.lock().unwrap().len(), 1);
+    assert_eq!(output2.lock().unwrap().len(), 1);
   }
 
   #[test]
-  fn builder_build_local_does_not_install() {
+  fn shutdown_is_idempotent() {
     let output = Arc::new(Mutex::new(Vec::new()));
     let flow = MockFlow::new(Level::Trace, output.clone());
+    let logger = Logger::new(128, flow, payload_only);
 
-    let logger =
-      Builder::new().capacity(64).add_flow(flow).build_local().unwrap();
+    logger.log(Record::new(Level::Info, "test", "before shutdown"));
+    logger.shutdown();
+    logger.shutdown();
 
-    logger.info("local builder msg".into(), "test");
-    std::thread::sleep(std::time::Duration::from_millis(100));
-    drop(logger);
-
-    let logs = output.lock().unwrap();
-    assert_eq!(logs.len(), 1);
-  }
-
-  #[test]
-  fn drop_cleanly_terminates_thread() {
-    let output = Arc::new(Mutex::new(Vec::new()));
-    let flow = MockFlow::new(Level::Trace, output.clone());
-
-    let logger = Logger::new(
-      128,
-      flow,
-      |record: &Record, _timestamp: &str, out: &mut String| {
-        // Simulates a formatter that emits the raw payload verbatim.
-        out.push_str(&String::from_utf8_lossy(&record.content));
-        out.push('\n');
-        Ok(())
-      },
-    );
-    logger.info("before drop".into(), "test");
-    std::thread::sleep(std::time::Duration::from_millis(100));
-
-    // Drop should not hang — the thread should be signaled and joined
-    drop(logger);
-
-    let logs = output.lock().unwrap();
-    assert_eq!(logs.len(), 1);
+    assert_eq!(output.lock().unwrap().len(), 1);
   }
 
   #[test]
   fn logger_format_variants() {
     let output = Arc::new(Mutex::new(Vec::new()));
     let flow = MockFlow::new(Level::Trace, output.clone());
-    let logger = Logger::new(
-      128,
-      flow,
-      |record: &Record, _timestamp: &str, out: &mut String| {
-        // Simulates a formatter that emits the raw payload verbatim.
-        out.push_str(&String::from_utf8_lossy(&record.content));
-        out.push('\n');
-        Ok(())
-      },
-    );
+    let logger = Logger::new(128, flow, payload_only);
 
     // Positional args
-    logger.info(format!("hello {}", "world"), "test");
+    logger.log(Record::new(Level::Info, "test", format!("hello {}", "world")));
     // Named args
-    logger.info(format!("x={x}, y={y}", x = 1, y = 2), "test");
+    logger.log(Record::new(
+      Level::Info,
+      "test",
+      format!("x={x}, y={y}", x = 1, y = 2),
+    ));
     // Complex expressions
-    logger.info(format!("result={}", 1 + 2 * 3), "test");
+    logger.log(Record::new(
+      Level::Info,
+      "test",
+      format!("result={}", 1 + 2 * 3),
+    ));
     // Multiple positional
-    logger.info(format!("a={}, b={}, c={}", 1, "two", 2.8), "test");
+    logger.log(Record::new(
+      Level::Info,
+      "test",
+      format!("a={}, b={}, c={}", 1, "two", 2.8),
+    ));
 
-    std::thread::sleep(std::time::Duration::from_millis(100));
     drop(logger);
 
     let logs = output.lock().unwrap();

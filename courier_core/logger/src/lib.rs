@@ -1,9 +1,10 @@
 //! A composable, asynchronous logging framework.
 //!
-//! This crate provides a thread-safe logger built around a **flow** abstraction,
-//! where each flow represents a destination for log output (e.g., console,
-//! file, or custom). Flows are composable via the [`Stack`](flow::Stack) type, allowing
-//! multiple destinations to be chained together.
+//! This crate provides a thread-safe logger built around a **flow**
+//! abstraction, where each flow represents a destination for log output (e.g.,
+//! console, file, or custom). Flows are composed **at compile time** via the
+//! [`Stack`](flow::Stack) type, allowing multiple destinations to be chained
+//! without dynamic dispatch.
 //!
 //! Log records are filtered at the call site, cross an internal channel and
 //! are rendered on a dedicated worker thread: the configured [`Format`] step
@@ -16,10 +17,13 @@
 //! # Architecture
 //!
 //! ```text
-//! macro → [level gate] → Logger (channel) → logger thread
-//!       → Format::format (cached timestamp, reusable buffer, full layout)
-//!       → Flow(s) write the rendered line → output
+//! macro → [level gate] → Record → Logger (bounded channel) → logger thread
+//!       → timestamp → Format::format (cached timestamp, reusable buffer)
+//!       → Flow chain writes the rendered line → output
 //! ```
+//!
+//! Records do not carry a timestamp; the worker stamps each record when it is
+//! dequeued, so the logging call site never reads a clock.
 //!
 //! # Quick start
 //!
@@ -28,13 +32,12 @@
 //!
 //! // Build and install the global logger.
 //! Builder::new()
-//!     .capacity(4096)
-//!     .add_flow(logger::flows::ConsoleFlow::new(Level::Info))
-//!     .build()
-//!     .expect("Failed to install logger");
+//!   .capacity(4096)
+//!   .add_flow(logger::flows::ConsoleFlow::new(Level::Info))
+//!   .build();
 //!
-//! // Logging macros are available once the logger is installed.
-//! logger::info!("my_module", "Hello from the logger!");
+//! // Logging macros are no-ops until a logger is installed.
+//! logger::info!(namespace = "my_module", "Hello from the logger!");
 //! ```
 //!
 //! # Features
@@ -44,6 +47,8 @@
 //!   avoids formatting/allocating them at all.
 //! - **Target routing** — records carry an optional `target`; a flow only
 //!   accepts a record when its name matches the target.
+//! - **Lock-free call site** — the record is handed to the worker with a
+//!   single non-blocking channel send.
 //! - **Single-pass rendering** — the worker renders each record exactly once
 //!   into a reusable buffer; steady-state formatting allocates nothing and
 //!   flows never re-format.

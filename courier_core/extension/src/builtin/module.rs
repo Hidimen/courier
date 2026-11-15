@@ -7,11 +7,10 @@ use super::capability::*;
 /// # Examples
 ///
 /// ```rust
-/// use extension::Module;
+/// use extension::builtin::Module;
 ///
 /// let module = Module::<()>::new("demo", "0.1.0", "A demo module");
 /// assert_eq!(module.name(), "demo");
-/// assert!(module.capabilities().is_empty());
 /// ```
 pub struct Module<R> {
   name: &'static str,
@@ -28,7 +27,7 @@ impl<R> Module<R> {
   /// # Examples
   ///
   /// ```rust
-  /// use extension::Module;
+  /// use extension::builtin::Module;
   ///
   /// let module = Module::<()>::new("demo", "0.1.0", "A demo module");
   /// ```
@@ -59,7 +58,7 @@ impl<R> Module<R> {
   /// # Examples
   ///
   /// ```rust
-  /// use extension::Module;
+  /// use extension::builtin::Module;
   ///
   /// assert_eq!(Module::<()>::new("demo", "0.1.0", "A demo module").name(), "demo");
   /// ```

@@ -19,10 +19,29 @@ use crate::Depot;
 /// # Examples
 ///
 /// ```rust
-/// use depot::StreamProvider;
-///
-/// fn transport<P: StreamProvider>() -> std::any::TypeId {
-///   std::any::TypeId::of::<<P as StreamProvider>::Transport>()
+/// use depot::provider;
+/// # use network::transport::tcp::TcpTransport;
+/// # use protocol::{Protocol, stream::StreamProtocol};
+/// # struct Demo;
+/// # impl Protocol for Demo {
+/// #   type Command = ();
+/// #   type Error = std::io::Error;
+/// #   const NAME: &'static str = "demo";
+/// # }
+/// # impl StreamProtocol for Demo {
+/// #   fn step(
+/// #     &mut self, _: &mut protocol::stream::Context<'_>,
+/// #     _: protocol::stream::Input<()>,
+/// #   ) -> Result<(), Self::Error> { Ok(()) }
+/// # }
+/// struct DemoProvider;
+/// impl depot::StreamProvider for DemoProvider {
+///   type Transport = TcpTransport;
+///   type Protocol = Demo;
+/// 
+///   fn protocol() -> Self::Protocol {
+///     Demo
+///   }
 /// }
 /// ```
 pub trait StreamProvider: Sized {
@@ -40,10 +59,29 @@ pub trait StreamProvider: Sized {
 /// # Examples
 ///
 /// ```rust
-/// use depot::DatagramProvider;
-///
-/// fn transport<P: DatagramProvider>() -> std::any::TypeId {
-///   std::any::TypeId::of::<<P as DatagramProvider>::Transport>()
+/// use depot::provider;
+/// # use network::transport::udp::UdpTransport;
+/// # use protocol::{Protocol, datagram::DatagramProtocol};
+/// # struct Demo;
+/// # impl Protocol for Demo {
+/// #   type Command = ();
+/// #   type Error = std::io::Error;
+/// #   const NAME: &'static str = "demo";
+/// # }
+/// # impl DatagramProtocol for Demo {
+/// #   fn step(
+/// #     &mut self, _: &mut protocol::datagram::Context<'_>,
+/// #     _: protocol::datagram::Input<()>,
+/// #   ) -> Result<(), Self::Error> { Ok(()) }
+/// # }
+/// struct DemoProvider;
+/// impl depot::DatagramProvider for DemoProvider {
+///   type Transport = UdpTransport;
+///   type Protocol = Demo;
+/// 
+///   fn protocol() -> Self::Protocol {
+///     Demo
+///   }
 /// }
 /// ```
 pub trait DatagramProvider: Sized {
@@ -69,7 +107,6 @@ pub trait DatagramProvider: Sized {
 /// #   type Command = ();
 /// #   type Error = std::io::Error;
 /// #   const NAME: &'static str = "demo";
-/// #   fn create() -> Self { Self }
 /// # }
 /// # impl StreamProtocol for Demo {
 /// #   fn step(
@@ -81,6 +118,10 @@ pub trait DatagramProvider: Sized {
 /// # impl depot::StreamProvider for DemoProvider {
 /// #   type Transport = TcpTransport;
 /// #   type Protocol = Demo;
+/// #   
+/// #   fn protocol() -> Self::Protocol {
+/// #     Demo
+/// #   }
 /// # }
 /// let capability = provider::stream::<DemoProvider>();
 /// ```
@@ -107,7 +148,6 @@ pub fn stream<P: StreamProvider>() -> Provider<Depot> {
 /// #   type Command = ();
 /// #   type Error = std::io::Error;
 /// #   const NAME: &'static str = "demo";
-/// #   fn create() -> Self { Self }
 /// # }
 /// # impl DatagramProtocol for Demo {
 /// #   fn step(
@@ -118,6 +158,10 @@ pub fn stream<P: StreamProvider>() -> Provider<Depot> {
 /// # impl depot::DatagramProvider for DemoProvider {
 /// #   type Transport = UdpTransport;
 /// #   type Protocol = Demo;
+/// #   
+/// #   fn protocol() -> Self::Protocol {
+/// #     Demo
+/// #   }
 /// # }
 /// let capability = provider::datagram::<DemoProvider>();
 /// ```

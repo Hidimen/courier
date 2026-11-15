@@ -2,6 +2,7 @@ use std::{marker::PhantomData, sync::Arc};
 
 use crate::{
   DefaultFormatter, Format, Logger,
+  config::DEFAULT_CAPACITY,
   flow::{Flow, Identity, Stack},
 };
 
@@ -14,9 +15,12 @@ pub struct NonEmpty;
 /// A builder for constructing a [`Logger`] with a fluent API.
 ///
 /// The builder uses type-state generics to enforce correct usage at compile
-/// time: you must call [`add_flow`](Builder::add_flow) and
-/// [`capacity`](Builder::capacity) before [`build`](Builder::build) becomes
-/// available.
+/// time: you must call [`add_flow`](Builder::add_flow) before
+/// [`build`](Builder::build) becomes available. The capacity defaults to
+/// `1024` and only has to be set to override it.
+///
+/// Flows are composed in the type system ([`Stack`]), so adding or removing a
+/// flow is a compile-time decision; there is no dynamic flow registry.
 ///
 /// # Type parameters
 ///
@@ -24,22 +28,20 @@ pub struct NonEmpty;
 /// - `Formatter` — the formatter type (defaults to [`DefaultFormatter`]).
 /// - `F` — the composite flow type (defaults to `()` before the first flow).
 ///
-/// # Example
+/// # Examples
 ///
 /// ```rust,no_run
 /// use logger::{Builder, Level};
 ///
 /// let logger = Builder::new()
-///     .capacity(4096)
-///     .add_flow(logger::flows::ConsoleFlow::new(Level::Debug))
-///     .build_local()
-///     .expect("Unable to build logger");
+///   .capacity(4096)
+///   .add_flow(logger::flows::ConsoleFlow::new(Level::Debug))
+///   .build_local();
 ///
-/// logger.info("Hello!".into(), "my_app");
 /// drop(logger);
 /// ```
 pub struct Builder<State, Formatter = DefaultFormatter, F = ()> {
-  capacity: Option<usize>,
+  capacity: usize,
   flows: Option<F>,
   format: Formatter,
   _state: PhantomData<State>,
@@ -48,10 +50,10 @@ pub struct Builder<State, Formatter = DefaultFormatter, F = ()> {
 impl Builder<Empty> {
   /// Creates a new [`Builder`] with the default settings.
   ///
-  /// The returned builder has no flows, no capacity, and uses
+  /// The returned builder has no flows, uses the default capacity and uses
   /// [`DefaultFormatter`] as its formatter.
   ///
-  /// # Example
+  /// # Examples
   ///
   /// ```rust
   /// use logger::Builder;
@@ -60,7 +62,7 @@ impl Builder<Empty> {
   /// ```
   pub fn new() -> Self {
     Builder {
-      capacity: None,
+      capacity: DEFAULT_CAPACITY,
       flows: None,
       format: DefaultFormatter,
       _state: PhantomData,
@@ -78,24 +80,35 @@ impl<Formatter: Format> Builder<Empty, Formatter> {
   /// Sets the capacity of the internal log channel.
   ///
   /// The capacity determines how many log records can be buffered before the
-  /// sending side blocks (or drops, for `try_send`).
+  /// sending side drops them. A capacity of zero is promoted to one, because a
+  /// zero-capacity channel only accepts a record while the worker is parked in
+  /// `recv`.
+  ///
+  /// # Examples
+  ///
+  /// ```rust
+  /// use logger::Builder;
+  ///
+  /// let builder = Builder::new().capacity(2048);
+  /// ```
   pub fn capacity(mut self, capacity: usize) -> Self {
-    self.capacity = Some(capacity);
+    self.capacity = capacity;
     self
   }
 
   /// Sets a custom [`Format`] formatter, replacing the default one.
   ///
-  /// # Example
+  /// # Examples
   ///
   /// ```rust
   /// use std::fmt::Write as _;
   /// use logger::Builder;
   ///
-  /// let builder = Builder::new()
-  ///     .format(|record: &logger::Record, _timestamp: &str, out: &mut String| {
-  ///         write!(out, "[CUSTOM] {}", String::from_utf8_lossy(&record.content))
-  ///     });
+  /// let builder = Builder::new().format(
+  ///   |record: &logger::Record, _timestamp: &str, out: &mut String| {
+  ///     let _ = write!(out, "[CUSTOM] {}", record.content);
+  ///   },
+  /// );
   /// ```
   pub fn format<For: Format>(self, formatter: For) -> Builder<Empty, For> {
     Builder {
@@ -105,47 +118,24 @@ impl<Formatter: Format> Builder<Empty, Formatter> {
       _state: PhantomData,
     }
   }
-}
 
-impl<Formatter: Format> Builder<NonEmpty, Formatter> {
-  /// Sets the capacity of the internal log channel.
-  ///
-  /// See [`Builder::capacity`] on the `Empty` state for details.
-  pub fn capacity(mut self, capacity: usize) -> Self {
-    self.capacity = Some(capacity);
-    self
-  }
-
-  /// Sets a custom [`Format`] formatter, replacing the current one.
-  ///
-  /// See [`Builder::format`] on the `Empty` state for details.
-  pub fn format<For: Format>(self, formatter: For) -> Builder<NonEmpty, For> {
-    Builder {
-      capacity: self.capacity,
-      flows: self.flows,
-      format: formatter,
-      _state: PhantomData,
-    }
-  }
-}
-
-impl<Formatter: Format> Builder<Empty, Formatter> {
   /// Adds a [`Flow`] to the logger pipeline.
   ///
   /// The first call transitions the builder from [`Empty`] to [`NonEmpty`],
   /// unlocking [`build`](Builder::build). Subsequent calls stack additional
   /// flows on top.
   ///
-  /// # Example
+  /// # Examples
   ///
   /// ```rust
   /// use logger::{Builder, Level};
   ///
   /// let logger = Builder::new()
-  ///     .capacity(1024)
-  ///     .add_flow(logger::flows::ConsoleFlow::new(Level::Trace))
-  ///     .build_local()
-  ///     .unwrap();
+  ///   .capacity(1024)
+  ///   .add_flow(logger::flows::ConsoleFlow::new(Level::Trace))
+  ///   .build_local();
+  ///
+  /// drop(logger);
   /// ```
   pub fn add_flow<T>(
     self, flow: T,
@@ -166,22 +156,46 @@ impl<Formatter: Format, F> Builder<NonEmpty, Formatter, F>
 where
   F: Flow + 'static,
 {
+  /// Sets the capacity of the internal log channel.
+  ///
+  /// See [`Builder::capacity`] on the `Empty` state for details.
+  pub fn capacity(mut self, capacity: usize) -> Self {
+    self.capacity = capacity;
+    self
+  }
+
+  /// Sets a custom [`Format`] formatter.
+  ///
+  /// See [`Builder::format`] on the `Empty` state for details.
+  pub fn format<For: Format>(
+    self, formatter: For,
+  ) -> Builder<NonEmpty, For, F> {
+    Builder {
+      capacity: self.capacity,
+      flows: self.flows,
+      format: formatter,
+      _state: PhantomData,
+    }
+  }
+
   /// Adds an additional [`Flow`] to the logger pipeline.
   ///
-  /// Flows are stacked — when a record is logged, it passes through each
-  /// flow in the order they were added (last added processes first).
+  /// Flows are stacked — when a record is logged, it passes through each flow
+  /// in the order they were added (last added processes first).
   ///
-  /// # Example
+  /// # Examples
   ///
   /// ```rust
   /// use logger::{Builder, Level};
+  /// use logger::flows::ConsoleFlow;
   ///
   /// let logger = Builder::new()
-  ///     .capacity(1024)
-  ///     .add_flow(logger::flows::ConsoleFlow::new(Level::Info))
-  ///     .add_flow(logger::flows::ConsoleFlow::new(Level::Trace))
-  ///     .build_local()
-  ///     .unwrap();
+  ///   .capacity(1024)
+  ///   .add_flow(ConsoleFlow::new(Level::Info))
+  ///   .add_flow(ConsoleFlow::new(Level::Trace))
+  ///   .build_local();
+  ///
+  /// drop(logger);
   /// ```
   pub fn add_flow<T>(self, flow: T) -> Builder<NonEmpty, Formatter, Stack<T, F>>
   where
@@ -197,70 +211,47 @@ where
 
   /// Builds the logger and installs it as the global singleton.
   ///
-  /// Once installed, the logger can be accessed via
-  /// [`Logger::get_instance`] and the logging macros (`info!`, `warn!`,
-  /// etc.) become usable.
-  ///
-  /// # Errors
-  ///
-  /// Returns `Err("Capacity is unknown")` if [`capacity`](Builder::capacity)
-  /// was not called.
+  /// Once installed, the logger can be accessed via [`Logger::instance`] and
+  /// the logging macros (`info!`, `warn!`, etc.) become active.
   ///
   /// # Panics
   ///
   /// Panics if a logger has already been installed via a previous call to
   /// [`build`](Builder::build).
   ///
-  /// # Example
+  /// # Examples
   ///
-  /// ```rust
+  /// ```rust,no_run
   /// use logger::{Builder, Level};
   ///
   /// Builder::new()
-  ///     .capacity(4096)
-  ///     .add_flow(logger::flows::ConsoleFlow::new(Level::Info))
-  ///     .build()
-  ///     .expect("Failed to install logger");
+  ///   .capacity(4096)
+  ///   .add_flow(logger::flows::ConsoleFlow::new(Level::Info))
+  ///   .build();
   /// ```
-  pub fn build(self) -> Result<Arc<Logger>, &'static str> {
-    let logger = Logger::new(
-      self.capacity.ok_or("Capacity is unknown")?,
-      self.flows.unwrap(),
-      self.format,
-    );
-    Ok(logger.install())
+  pub fn build(self) -> Arc<Logger> {
+    Logger::new(self.capacity, self.flows.unwrap(), self.format).install()
   }
 
   /// Builds the logger without installing it as the global singleton.
   ///
-  /// This is useful for testing or when you need a standalone logger
-  /// instance that does not interfere with a globally-installed logger.
+  /// This is useful for testing or when you need a standalone logger instance
+  /// that does not interfere with a globally-installed logger.
   ///
-  /// # Errors
-  ///
-  /// Returns `Err("Capacity is unknown")` if [`capacity`](Builder::capacity)
-  /// was not called.
-  ///
-  /// # Example
+  /// # Examples
   ///
   /// ```rust
   /// use logger::{Builder, Level};
   ///
   /// let logger = Builder::new()
-  ///     .capacity(128)
-  ///     .add_flow(logger::flows::ConsoleFlow::new(Level::Info))
-  ///     .build_local()
-  ///     .expect("Unable to build logger");
+  ///   .capacity(128)
+  ///   .add_flow(logger::flows::ConsoleFlow::new(Level::Info))
+  ///   .build_local();
   ///
-  /// logger.info("test message".into(), "test");
   /// drop(logger);
   /// ```
-  pub fn build_local(self) -> Result<Arc<Logger>, &'static str> {
-    Ok(Arc::new(Logger::new(
-      self.capacity.ok_or("Capacity is unknown")?,
-      self.flows.unwrap(),
-      self.format,
-    )))
+  pub fn build_local(self) -> Arc<Logger> {
+    Arc::new(Logger::new(self.capacity, self.flows.unwrap(), self.format))
   }
 }
 
@@ -274,15 +265,15 @@ mod tests {
 
   struct TestFlow {
     level: Level,
-    output: Arc<Mutex<Vec<String>>>,
     name: &'static str,
+    output: Arc<Mutex<Vec<String>>>,
   }
 
   impl TestFlow {
     fn new(
       level: Level, name: &'static str, output: Arc<Mutex<Vec<String>>>,
     ) -> Self {
-      Self { level, output, name }
+      Self { level, name, output }
     }
   }
 
@@ -308,12 +299,23 @@ mod tests {
   }
 
   #[test]
-  fn builder_without_capacity_returns_error() {
+  fn builder_without_capacity_keeps_every_record() {
     let output = Arc::new(Mutex::new(Vec::new()));
-    let flow = TestFlow::new(Level::Trace, "test", output);
-    let result = Builder::new().add_flow(flow).build_local();
-    assert!(result.is_err());
-    assert_eq!(result.unwrap_err(), "Capacity is unknown");
+    let flow = TestFlow::new(Level::Trace, "test", output.clone());
+
+    // No explicit capacity: the default must be large enough to buffer two
+    // back-to-back records, which used to be dropped with capacity zero.
+    let logger = Builder::new().add_flow(flow).build_local();
+
+    logger.log(Record::new(Level::Info, "test", "first"));
+    logger.log(Record::new(Level::Info, "test", "second"));
+
+    drop(logger);
+
+    let logs = output.lock().unwrap();
+    assert_eq!(logs.len(), 2);
+    assert!(logs[0].contains("first"));
+    assert!(logs[1].contains("second"));
   }
 
   #[test]
@@ -321,11 +323,9 @@ mod tests {
     let output = Arc::new(Mutex::new(Vec::new()));
     let flow = TestFlow::new(Level::Trace, "test_flow", output.clone());
 
-    let logger =
-      Builder::new().capacity(128).add_flow(flow).build_local().unwrap();
+    let logger = Builder::new().capacity(128).add_flow(flow).build_local();
 
-    logger.info("builder test".into(), "test");
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    logger.log(Record::new(Level::Info, "test", "builder test"));
     drop(logger);
 
     let logs = output.lock().unwrap();
@@ -343,19 +343,15 @@ mod tests {
       .capacity(256)
       .add_flow(flow1)
       .add_flow(flow2)
-      .build_local()
-      .unwrap();
+      .build_local();
 
-    logger.info("multi-flow test".into(), "test");
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    logger.log(Record::new(Level::Info, "test", "multi-flow test"));
     drop(logger);
 
     let logs = output.lock().unwrap();
-    // When both flows can_log (level Trace >= Info), they chain
-    // flow2 processes first, then flow1 processes the result
-    // So we should see 2 entries
-    assert!(!logs.is_empty());
-    assert!(logs.iter().any(|m| m.contains("multi-flow test")));
+    // Both flows accept the record, so it is written twice.
+    assert_eq!(logs.len(), 2);
+    assert!(logs.iter().all(|line| line.contains("multi-flow test")));
   }
 
   #[test]
@@ -366,29 +362,27 @@ mod tests {
     let logger = Builder::new()
       .capacity(128)
       .format(|record: &Record, _timestamp: &str, out: &mut String| {
-        write!(out, "[CUSTOM] {}", String::from_utf8_lossy(&record.content))
+        let _ = write!(out, "[CUSTOM] {}", record.content);
       })
       .add_flow(flow)
-      .build_local()
-      .unwrap();
+      .build_local();
 
-    logger.info("fmt test".into(), "test");
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    logger.log(Record::new(Level::Info, "test", "fmt test"));
     drop(logger);
 
     let logs = output.lock().unwrap();
     assert_eq!(logs.len(), 1);
-    assert!(logs[0].contains("[CUSTOM]"));
+    assert!(logs[0].contains("[CUSTOM] fmt test"));
   }
 
   #[test]
   fn default_formatter_output_format() {
     use crate::Format;
 
-    let record = Record::new("test msg".into(), Level::Info, "test");
+    let record = Record::new(Level::Info, "test", "test msg");
     let formatter = DefaultFormatter;
     let mut line = String::new();
-    formatter.format(&record, "2026-01-02 03:04:05", &mut line).unwrap();
+    formatter.format(&record, "2026-01-02 03:04:05", &mut line);
 
     // Format: [YYYY-MM-DD HH:MM:SS][INFO][test] test msg
     assert_eq!(line, "[2026-01-02 03:04:05][INFO][test] test msg\n");

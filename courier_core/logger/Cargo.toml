@@ -8,8 +8,5 @@ license.workspace = true
 
 [dependencies]
 crossbeam-channel.workspace = true
-tokio.workspace = true
-tokio-util.workspace = true
 marquage.workspace = true
 chrono.workspace = true
-bytes.workspace = true
