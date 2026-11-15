@@ -97,7 +97,6 @@
 pub mod config;
 pub mod depot;
 pub(crate) mod driver;
-pub mod error;
 mod metrics;
 pub mod provider;
 mod signal;

@@ -25,7 +25,7 @@ pub struct Config {
 }
 
 #[derive(Debug, Parse, Generate, Default)]
-#[marquage(rename_all = "snake_case")]
+#[marquage(rename_all = "lowercase")]
 pub enum RunningKind {
   #[default]
   Stream,
