@@ -8,9 +8,13 @@ license.workspace = true
 
 [dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "signal", "time"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "signal", "time"] }
 thiserror.workspace = true
 marquage.workspace = true
 anyhow.workspace = true
+num_cpus = "1.17.0"
+bytes.workspace = true
+tokio-mpmc.workspace = true
 num_cpus = "1.17.0"
 bytes.workspace = true
 tokio-mpmc.workspace = true
