@@ -29,7 +29,6 @@ logger = { path = "../courier_core/logger" }
 depot = { path = "../courier_core/depot" }
 extension = { path = "../courier_core/extension" }
 event = { path = "../courier_core/event" }
-ipc = { path = "../courier_core/ipc" }
 fast-rich = "0.3.3"
 
 # AUTOGEN DEP: START #

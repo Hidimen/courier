@@ -9,6 +9,3 @@ pub const COMMIT_ID: &str = env!("COMMIT_ID");
 pub const BRANCH: &str = env!("BRANCH");
 /// Refers to timestamp created when compiling the project.
 pub const COMPILE_TIME: &str = env!("COMPILE_TIME");
-
-/// Stores ipc socket name.
-pub const IPC_NAME: &str = "courier.ipc";
