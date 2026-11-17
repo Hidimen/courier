@@ -33,7 +33,7 @@ fn main() -> anyhow::Result<()> {
     Err(_) => {
       println!("cargo:rustc-env=COMMIT_ID=<UNKNOWN>");
       println!("cargo:rustc-env=BRANCH=<UNKNOWN>");
-    }
+    },
   }
 
   Ok(())

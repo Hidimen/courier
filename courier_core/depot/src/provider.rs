@@ -38,7 +38,7 @@ use crate::Depot;
 /// impl depot::StreamProvider for DemoProvider {
 ///   type Transport = TcpTransport;
 ///   type Protocol = Demo;
-/// 
+///
 ///   fn protocol() -> Self::Protocol {
 ///     Demo
 ///   }
@@ -78,7 +78,7 @@ pub trait StreamProvider: Sized {
 /// impl depot::DatagramProvider for DemoProvider {
 ///   type Transport = UdpTransport;
 ///   type Protocol = Demo;
-/// 
+///
 ///   fn protocol() -> Self::Protocol {
 ///     Demo
 ///   }
